@@ -49,7 +49,7 @@ function code() {
 	fi
 
 	# Launch Code
-	exec "$CODE" . $DISABLE_TEST_EXTENSION "$@"
+	exec "$CODE" . --remote-debugging-port=9222 $DISABLE_TEST_EXTENSION "$@"
 }
 
 function code-wsl()

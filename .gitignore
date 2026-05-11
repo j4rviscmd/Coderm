@@ -48,3 +48,4 @@ dist
 .github/skills/.local/
 
 CLAUDE.md
+.mcp.json
