@@ -6,11 +6,9 @@
 /**
  * Entry point for Coderm-specific contributions.
  *
- * Side-effect imports register:
- * - Directional pane-resize commands (`coderm.workbench.editor.resizeIncrement`)
- * - Active pane border highlight (`coderm.activePaneBorder.*`)
- * - Auto-maximize on focus configuration (`coderm.workbench.editor.autoMaximizeOnFocus`)
+ * Side-effect imports register their own configurations and contributions.
  */
 import './activePaneBorder.js';
-import './resizePaneActions.js';
 import './autoMaximizeActions.js';
+import './cursorAutoHide.js';
+import './resizePaneActions.js';
