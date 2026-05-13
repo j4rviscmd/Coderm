@@ -1570,19 +1570,10 @@ export class GridView implements IDisposable {
 				continue;
 			}
 
-			const candidates = isForward
-				? [childIndex + 1, childIndex - 1]
-				: [childIndex - 1, childIndex + 1];
-			const siblingIndex = candidates.find(idx =>
-				idx >= 0 && idx < parentNode.children.length && parentNode.isChildVisible(idx));
-
-			if (siblingIndex === undefined) {
+			const siblingIndex = isForward ? childIndex + 1 : childIndex - 1;
+			if (siblingIndex < 0 || siblingIndex >= parentNode.children.length || !parentNode.isChildVisible(siblingIndex)) {
 				continue;
 			}
-
-			const siblingIsAfter = siblingIndex > childIndex;
-			const activeDeltaSign = (isForward === siblingIsAfter) ? 1 : -1;
-			const rawDelta = activeDeltaSign * delta;
 
 			const ourSize = parentNode.getChildSize(childIndex);
 			const siblingSize = parentNode.getChildSize(siblingIndex);
@@ -1591,12 +1582,9 @@ export class GridView implements IDisposable {
 			const siblingMinSize = parentNode.children[siblingIndex].minimumSize;
 			const siblingMaxSize = parentNode.children[siblingIndex].maximumSize;
 
-			const maxGrowDelta = Math.min(ourMaxSize - ourSize, siblingSize - siblingMinSize);
-			const maxShrinkDelta = Math.min(ourSize - ourMinSize, siblingMaxSize - siblingSize);
-
-			const effectiveDelta = rawDelta > 0
-				? Math.min(rawDelta, maxGrowDelta)
-				: Math.max(rawDelta, -maxShrinkDelta);
+			const maxGrow = Math.min(ourMaxSize - ourSize, siblingSize - siblingMinSize);
+			const maxShrink = Math.min(ourSize - ourMinSize, siblingMaxSize - siblingSize);
+			const effectiveDelta = Math.max(-maxShrink, Math.min(delta, maxGrow));
 
 			if (effectiveDelta === 0) {
 				return false;
