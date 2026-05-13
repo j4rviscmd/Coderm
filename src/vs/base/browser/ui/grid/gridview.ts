@@ -1539,6 +1539,79 @@ export class GridView implements IDisposable {
 		return true;
 	}
 
+	/**
+	 * Resize the border of a view in the given direction by walking the tree
+	 * to find an ancestor BranchNode whose orientation matches, then resizing
+	 * the visible adjacent sibling.
+	 *
+	 * This is the grid-primitive equivalent of tmux's `resize-pane -U/-D/-L/-R`.
+	 *
+	 * @param location The {@link GridLocation location} of the view.
+	 * @param targetOrientation The orientation matching the direction (VERTICAL for Up/Down, HORIZONTAL for Left/Right).
+	 * @param isForward Whether the direction is forward (Down/Right) or backward (Up/Left).
+	 * @param delta The pixel amount to move the border. Must be positive.
+	 * @returns true if a border was found and resized, false otherwise.
+	 */
+	resizeViewBorder(location: GridLocation, targetOrientation: Orientation, isForward: boolean, delta: number): boolean {
+		if (this.hasMaximizedView()) {
+			this.exitMaximizedView();
+		}
+
+		for (let i = location.length; i > 0; i--) {
+			const parentLocation = location.slice(0, i - 1);
+			const childIndex = location[i - 1];
+			const [, parentNode] = this.getNode(parentLocation);
+
+			if (!(parentNode instanceof BranchNode)) {
+				continue;
+			}
+
+			if (parentNode.orientation !== targetOrientation) {
+				continue;
+			}
+
+			const candidates = isForward
+				? [childIndex + 1, childIndex - 1]
+				: [childIndex - 1, childIndex + 1];
+			const siblingIndex = candidates.find(idx =>
+				idx >= 0 && idx < parentNode.children.length && parentNode.isChildVisible(idx));
+
+			if (siblingIndex === undefined) {
+				continue;
+			}
+
+			const siblingIsAfter = siblingIndex > childIndex;
+			const activeDeltaSign = (isForward === siblingIsAfter) ? 1 : -1;
+			const rawDelta = activeDeltaSign * delta;
+
+			const ourSize = parentNode.getChildSize(childIndex);
+			const siblingSize = parentNode.getChildSize(siblingIndex);
+			const ourMinSize = parentNode.children[childIndex].minimumSize;
+			const ourMaxSize = parentNode.children[childIndex].maximumSize;
+			const siblingMinSize = parentNode.children[siblingIndex].minimumSize;
+			const siblingMaxSize = parentNode.children[siblingIndex].maximumSize;
+
+			const maxGrowDelta = Math.min(ourMaxSize - ourSize, siblingSize - siblingMinSize);
+			const maxShrinkDelta = Math.min(ourSize - ourMinSize, siblingMaxSize - siblingSize);
+
+			const effectiveDelta = rawDelta > 0
+				? Math.min(rawDelta, maxGrowDelta)
+				: Math.max(rawDelta, -maxShrinkDelta);
+
+			if (effectiveDelta === 0) {
+				return false;
+			}
+
+			parentNode.resizeChild(childIndex, ourSize + effectiveDelta);
+			parentNode.resizeChild(siblingIndex, siblingSize - effectiveDelta);
+
+			this.trySet2x2();
+			return true;
+		}
+
+		return false;
+	}
+
 	maximizeView(location: GridLocation, excludeViews: readonly IView[] = []) {
 		const [, nodeToMaximize] = this.getNode(location);
 		if (!(nodeToMaximize instanceof LeafNode)) {

@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Event } from '../../../../base/common/event.js';
+import { Direction } from '../../../../base/common/direction.js';
 import { IInstantiationService, createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { IEditorPane, GroupIdentifier, EditorInputWithOptions, CloseDirection, IEditorPartOptions, IEditorPartOptionsChangeEvent, EditorsOrder, IVisibleEditorPane, IEditorCloseEvent, IUntypedEditorInput, isEditorInput, IEditorWillMoveEvent, IMatchEditorOptions, IActiveEditorChangeEvent, IFindEditorOptions, IToolbarActions } from '../../../common/editor.js';
 import { EditorInput } from '../../../common/editor/editorInput.js';
@@ -377,6 +378,16 @@ export interface IEditorGroupsContainer {
 	 * Returns an editor layout of the container.
 	 */
 	getLayout(): EditorGroupLayout;
+
+	/**
+	 * Resizes the border of an editor group in the given direction.
+	 *
+	 * @param group The editor group or its identifier.
+	 * @param direction The direction to move the border.
+	 * @param delta The pixel amount to move the border. Must be positive.
+	 * @returns true if a border was found and resized, false otherwise.
+	 */
+	resizeGroupBorder(group: IEditorGroup | GroupIdentifier, direction: Direction, delta: number): boolean;
 
 	/**
 	 * Sets the orientation of the root group to be either vertical or horizontal.

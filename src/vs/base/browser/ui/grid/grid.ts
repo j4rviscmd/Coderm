@@ -5,6 +5,7 @@
 
 import { IBoundarySashes, Orientation } from '../sash/sash.js';
 import { equals, tail } from '../../../common/arrays.js';
+import { Direction } from '../../../common/direction.js';
 import { Event } from '../../../common/event.js';
 import { Disposable } from '../../../common/lifecycle.js';
 import './gridview.css';
@@ -13,14 +14,14 @@ import type { SplitView, AutoSizing as SplitViewAutoSizing } from '../splitview/
 
 export type { IViewSize };
 export { LayoutPriority, Orientation, orthogonal } from './gridview.js';
+export { Direction } from '../../../common/direction.js';
 
-export const enum Direction {
-	Up,
-	Down,
-	Left,
-	Right
-}
-
+/**
+ * Returns the opposite cardinal direction.
+ *
+ * @param direction - The direction to invert.
+ * @returns The direction pointing the other way.
+ */
 function oppositeDirection(direction: Direction): Direction {
 	switch (direction) {
 		case Direction.Up: return Direction.Down;
@@ -94,6 +95,14 @@ interface Boundary {
 	readonly range: Range;
 }
 
+/**
+ * Computes the boundary (offset and orthogonal range) of a box edge in the
+ * given direction.
+ *
+ * @param box The bounding box.
+ * @param direction The direction whose edge to compute.
+ * @returns A {@link Boundary} with the edge offset and the orthogonal range.
+ */
 function getBoxBoundary(box: Box, direction: Direction): Boundary {
 	const orientation = getDirectionOrientation(direction);
 	const offset = direction === Direction.Up ? box.top :
@@ -109,6 +118,16 @@ function getBoxBoundary(box: Box, direction: Direction): Boundary {
 	return { offset, range };
 }
 
+/**
+ * Recursively collects all leaf nodes whose box edge in the opposite of the
+ * given direction coincides with the provided boundary offset and whose
+ * orthogonal range intersects the boundary range.
+ *
+ * @param boxNode The root grid node to search from.
+ * @param direction The direction from the reference view towards the neighbors.
+ * @param boundary The boundary (offset + range) to match against.
+ * @returns An array of adjacent leaf nodes.
+ */
 function findAdjacentBoxLeafNodes<T extends IView>(boxNode: GridNode<T>, direction: Direction, boundary: Boundary): GridLeafNode<T>[] {
 	const result: GridLeafNode<T>[] = [];
 
@@ -543,6 +562,24 @@ export class Grid<T extends IView = IView> extends Disposable {
 	resizeView(view: T, size: IViewSize): void {
 		const location = this.getViewLocation(view);
 		return this.gridview.resizeView(location, size);
+	}
+
+	/**
+	 * Resize the border of a {@link IView view} in the given direction.
+	 * The view grows or shrinks depending on the direction and the position
+	 * of its adjacent sibling. This is the grid-level equivalent of tmux's
+	 * `resize-pane -U/-D/-L/-R`.
+	 *
+	 * @param view The reference view.
+	 * @param direction The direction to move the border. All directions grow the view.
+	 * @param delta The pixel amount to move the border. Must be positive.
+	 * @returns true if a border was found and resized, false otherwise.
+	 */
+	resizeViewBorder(view: T, direction: Direction, delta: number): boolean {
+		const location = this.getViewLocation(view);
+		const targetOrientation = getDirectionOrientation(direction);
+		const isForward = direction === Direction.Down || direction === Direction.Right;
+		return this.gridview.resizeViewBorder(location, targetOrientation, isForward, delta);
 	}
 
 	/**

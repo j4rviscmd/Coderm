@@ -1694,6 +1694,10 @@ export class Workbench extends Disposable implements IAgentWorkbenchLayoutServic
 		});
 	}
 
+	resizePaneBorder(_direction: Direction): void {
+		// not supported in sessions workbench
+	}
+
 	private getPartView(part: Parts): ISerializableView | undefined {
 		switch (part) {
 			case Parts.TITLEBAR_PART:
