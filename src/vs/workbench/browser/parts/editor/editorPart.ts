@@ -720,7 +720,13 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 			group.setActive(true);
 
 			// Expand the group if it is currently minimized
-			this.doRestoreGroup(group);
+			// Coderm: suppress auto-maximize on focus when disabled via setting.
+			// The upstream behavior always restores a minimized group on focus;
+			// Coderm gates this behind a configuration toggle so users can keep
+			// groups at their minimized size when navigating between panes.
+			if (this.configurationService.getValue<boolean>('coderm.workbench.editor.autoMaximizeOnFocus')) {
+				this.doRestoreGroup(group);
+			}
 
 			// Event
 			this._onDidChangeActiveGroup.fire(group);
@@ -732,6 +738,16 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 		this._onDidActivateGroup.fire({ group, reason });
 	}
 
+	/**
+	 * Restores a minimized group to its normal size.
+	 *
+	 * If another group is currently maximized, it is un-maximized first.
+	 * Then, if the target group's width or height matches its minimum,
+	 * an EXPAND arrangement is applied to give it proportional space.
+	 *
+	 * Errors are silently caught because this method may be invoked before
+	 * the grid view is fully initialized.
+	 */
 	private doRestoreGroup(group: IEditorGroupView): void {
 		if (!this.gridWidget) {
 			return; // method is called as part of state restore very early

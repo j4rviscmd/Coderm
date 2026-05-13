@@ -8,5 +8,7 @@
  *
  * Side-effect imports register their own configurations and contributions.
  */
-import './resizePaneActions.js';
+import './activePaneBorder.js';
+import './autoMaximizeActions.js';
 import './cursorAutoHide.js';
+import './resizePaneActions.js';
