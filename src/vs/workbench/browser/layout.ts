@@ -1864,14 +1864,40 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			return;
 		}
 
+		// Primary: editor group grid → workbench grid
+		if (this.tryResizeInDirection(part, direction, increment)) {
+			return;
+		}
+
+		// Fallback: opposite-side border moves in the input direction (active shrinks)
+		let oppositeDirection: Direction;
+		switch (direction) {
+			case Direction.Left: oppositeDirection = Direction.Right; break;
+			case Direction.Right: oppositeDirection = Direction.Left; break;
+			case Direction.Up: oppositeDirection = Direction.Down; break;
+			case Direction.Down: oppositeDirection = Direction.Up; break;
+		}
+		this.tryResizeInDirection(part, oppositeDirection, -increment);
+	}
+
+	/**
+	 * Attempts to resize a border in the given direction. Tries the editor
+	 * group grid first (if multiple groups are open), then the workbench grid.
+	 *
+	 * @param part The workbench part whose border to resize.
+	 * @param direction The cardinal direction to move the border.
+	 * @param increment The pixel amount to move the border (may be negative).
+	 * @returns true if a border was found and resized, false otherwise.
+	 */
+	private tryResizeInDirection(part: Parts, direction: Direction, increment: number): boolean {
 		if (part === Parts.EDITOR_PART && this.editorGroupService.mainPart.count > 1) {
 			const activeGroup = this.editorGroupService.mainPart.activeGroup;
 			if (this.editorGroupService.mainPart.resizeGroupBorder(activeGroup, direction, increment)) {
-				return;
+				return true;
 			}
 		}
 
-		this.resizePartBorder(part, direction, increment);
+		return this.resizePartBorder(part, direction, increment);
 	}
 
 	/**
@@ -1880,19 +1906,19 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	 *
 	 * @param part The workbench part whose border to resize.
 	 * @param direction The cardinal direction to move the border.
-	 * @param increment The pixel amount to move the border. Must be positive.
+	 * @param increment The pixel amount to move the border. Positive grows the part, negative shrinks it.
 	 */
-	private resizePartBorder(part: Parts, direction: Direction, increment: number): void {
+	private resizePartBorder(part: Parts, direction: Direction, increment: number): boolean {
 		if (!this.isVisible(part as Parts, mainWindow)) {
-			return;
+			return false;
 		}
 
 		const partView = this.getPartView(part);
 		if (!partView) {
-			return;
+			return false;
 		}
 
-		this.workbenchGrid.resizeViewBorder(partView, direction, increment);
+		return this.workbenchGrid.resizeViewBorder(partView, direction, increment);
 	}
 
 	/**
