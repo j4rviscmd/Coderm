@@ -695,6 +695,7 @@ export class TestLayoutService implements IWorkbenchLayoutService {
 	isMainEditorLayoutCentered(): boolean { return false; }
 	centerMainEditorLayout(_active: boolean): void { }
 	resizePart(_part: Parts, _sizeChangeWidth: number, _sizeChangeHeight: number): void { }
+	resizePaneBorder(_direction: Direction): void { }
 	getSize(part: Parts): IViewSize { throw new Error('Method not implemented.'); }
 	setSize(part: Parts, size: IViewSize): void { throw new Error('Method not implemented.'); }
 	registerPart(part: Part): IDisposable { return Disposable.None; }
@@ -910,6 +911,7 @@ export class TestEditorGroupsService implements IEditorGroupsService {
 	restoreGroup(_group: number | IEditorGroup): IEditorGroup { throw new Error('not implemented'); }
 	getSize(_group: number | IEditorGroup): { width: number; height: number } { return { width: 100, height: 100 }; }
 	setSize(_group: number | IEditorGroup, _size: { width: number; height: number }): void { }
+	resizeGroupBorder(_group: number | IEditorGroup, _direction: Direction, _delta: number): boolean { return false; }
 	arrangeGroups(_arrangement: GroupsArrangement): void { }
 	toggleMaximizeGroup(): void { }
 	hasMaximizedGroup(): boolean { throw new Error('not implemented'); }

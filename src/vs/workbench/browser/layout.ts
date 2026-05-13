@@ -1840,6 +1840,95 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		}
 	}
 
+	/**
+	 * Resizes the border of the currently focused pane in the specified direction.
+	 *
+	 * When the focused part is the editor area with multiple editor groups, the
+	 * editor group grid is tried first. If that grid has no border in the given
+	 * direction, the workbench-level grid is used as a fallback, providing
+	 * tmux-like tree-walking behavior across the sidebar, panel, auxiliary bar,
+	 * and editor area.
+	 *
+	 * @param direction The cardinal direction to move the border.
+	 */
+	resizePaneBorder(direction: Direction): void {
+		if (!this.workbenchGrid) {
+			return;
+		}
+
+		const focusedPart = this._getFocusedPart();
+		const part = focusedPart ?? Parts.EDITOR_PART;
+
+		const increment = this.getResizeIncrement();
+		if (increment <= 0) {
+			return;
+		}
+
+		if (part === Parts.EDITOR_PART && this.editorGroupService.mainPart.count > 1) {
+			const activeGroup = this.editorGroupService.mainPart.activeGroup;
+			if (this.editorGroupService.mainPart.resizeGroupBorder(activeGroup, direction, increment)) {
+				return;
+			}
+		}
+
+		this.resizePartBorder(part, direction, increment);
+	}
+
+	/**
+	 * Resizes the border of a workbench part by delegating to the workbench grid's
+	 * {@link Grid.resizeViewBorder} method.
+	 *
+	 * @param part The workbench part whose border to resize.
+	 * @param direction The cardinal direction to move the border.
+	 * @param increment The pixel amount to move the border. Must be positive.
+	 */
+	private resizePartBorder(part: Parts, direction: Direction, increment: number): void {
+		if (!this.isVisible(part as Parts, mainWindow)) {
+			return;
+		}
+
+		const partView = this.getPartView(part);
+		if (!partView) {
+			return;
+		}
+
+		this.workbenchGrid.resizeViewBorder(partView, direction, increment);
+	}
+
+	/**
+	 * Maps a workbench {@link Parts part identifier} to the corresponding
+	 * grid view used by the workbench layout grid.
+	 *
+	 * @param part The part to look up.
+	 * @returns The grid view for the part, or `undefined` if the part has no
+	 *          view in the grid.
+	 */
+	private getPartView(part: Parts): ISerializableView | undefined {
+		switch (part) {
+			case Parts.TITLEBAR_PART: return this.titleBarPartView;
+			case Parts.BANNER_PART: return this.bannerPartView;
+			case Parts.ACTIVITYBAR_PART: return this.activityBarPartView;
+			case Parts.SIDEBAR_PART: return this.sideBarPartView;
+			case Parts.PANEL_PART: return this.panelPartView;
+			case Parts.EDITOR_PART: return this.editorPartView;
+			case Parts.AUXILIARYBAR_PART: return this.auxiliaryBarPartView;
+			case Parts.STATUSBAR_PART: return this.statusBarPartView;
+			default: return undefined;
+		}
+	}
+
+	/**
+	 * Reads the `coderm.workbench.editor.resizeIncrement` configuration value
+	 * and converts it to a screen-aware pixel size.
+	 *
+	 * @returns The resize increment in CSS pixels, or `60` as a fallback.
+	 */
+	private getResizeIncrement(): number {
+		const configValue = this.configurationService.getValue<number>('coderm.workbench.editor.resizeIncrement');
+		const raw = typeof configValue === 'number' && configValue > 0 ? configValue : 60;
+		return computeScreenAwareSize(getActiveWindow(), raw);
+	}
+
 	private setActivityBarHidden(hidden: boolean): void {
 		this.stateModel.setRuntimeValue(LayoutStateKeys.ACTIVITYBAR_HIDDEN, hidden);
 		this.workbenchGrid.setViewVisible(this.activityBarPartView, !hidden);

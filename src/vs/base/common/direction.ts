@@ -4,9 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Entry point for Coderm-specific contributions.
- *
- * Side-effect imports register configuration and commands with the workbench.
+ * Cardinal directions used for navigating and resizing views within a grid.
+ * Placed in the common layer so it can be imported by both browser and common code.
  */
-import './activePaneBorder.js';
-import './resizePaneActions.js';
+export const enum Direction {
+	Up,
+	Down,
+	Left,
+	Right
+}
