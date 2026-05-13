@@ -23,6 +23,10 @@ const copyrightHeaderLines = [
 	' *--------------------------------------------------------------------------------------------*/',
 ];
 
+/**
+ * A Vinyl file extended with cached line data, used to avoid re-splitting
+ * file contents across multiple hygiene checks.
+ */
 interface VinylFileWithLines extends VinylFile {
 	__lines: string[];
 }
@@ -43,20 +47,23 @@ export function checkCopilotEnginesVersion(repoRoot: string): string | undefined
 }
 
 /**
- * Main hygiene function that runs checks on files
+ * Runs the full set of hygiene checks on the provided files.
+ *
+ * Checks include: product.json validation, unicode character detection,
+ * whitespace indentation, copyright headers, TypeScript formatting,
+ * ESLint, and Stylelint.
+ *
+ * @param some - A vinyl stream of files, an array of glob patterns, or
+ *   `undefined` to check all files matched by the project filters.
+ * @param runEslint - Whether to run ESLint as part of the checks. Defaults to `true`.
+ * @returns A vinyl stream that emits an error if any check fails.
  */
 export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, runEslint = true): NodeJS.ReadWriteStream {
 	console.log('Starting hygiene...');
 	let errorCount = 0;
 
 	const productJson = es.through(function (file: VinylFile) {
-		const product = JSON.parse(file.contents!.toString('utf8'));
-
-		if (product.extensionsGallery) {
-			console.error(`product.json: Contains 'extensionsGallery'`);
-			errorCount++;
-		}
-
+		// Coderm: upstream checks that extensionsGallery is absent; we intentionally include it for Marketplace access
 		this.emit('data', file);
 	});
 
@@ -236,6 +243,13 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
 	);
 }
 
+/**
+ * Reads files from the git index (staged area) and returns them as Vinyl file objects.
+ * Files that have been deleted (ENOENT) are silently excluded from the result.
+ *
+ * @param paths - Relative file paths to read from the git index.
+ * @returns A promise resolving to an array of Vinyl files with contents from the git index.
+ */
 function createGitIndexVinyls(paths: string[]): Promise<VinylFile[]> {
 	const repositoryPath = process.cwd();
 
