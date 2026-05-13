@@ -6,7 +6,9 @@
 /**
  * Entry point for Coderm-specific contributions.
  *
- * This side-effect import registers the directional pane-resize commands
- * and their associated configuration (`coderm.workbench.editor.resizeIncrement`).
+ * Side-effect imports register:
+ * - Directional pane-resize commands (`coderm.workbench.editor.resizeIncrement`)
+ * - Auto-maximize on focus configuration (`coderm.workbench.editor.autoMaximizeOnFocus`)
  */
 import './resizePaneActions.js';
+import './autoMaximizeActions.js';

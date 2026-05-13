@@ -25,7 +25,13 @@ export interface IEditorPartCreationOptions {
 	readonly restorePreviousState: boolean;
 }
 
-export const DEFAULT_EDITOR_MIN_DIMENSIONS = new Dimension(220, 70);
+/**
+ * Minimum dimensions for an editor group.
+ *
+ * Coderm overrides the upstream value (220x70) to allow much smaller panes,
+ * which is required for tmux-like multi-pane layouts with many splits.
+ */
+export const DEFAULT_EDITOR_MIN_DIMENSIONS = new Dimension(50, 35);
 export const DEFAULT_EDITOR_MAX_DIMENSIONS = new Dimension(Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
 
 export const DEFAULT_EDITOR_PART_OPTIONS: IEditorPartOptions = {
