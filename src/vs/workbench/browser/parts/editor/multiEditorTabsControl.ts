@@ -57,6 +57,7 @@ import { StickyEditorGroupModel, UnstickyEditorGroupModel } from '../../../commo
 import { IReadonlyEditorGroupModel } from '../../../common/editor/editorGroupModel.js';
 import { IHostService } from '../../../services/host/browser/host.js';
 import { BugIndicatingError } from '../../../../base/common/errors.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { applyDragImage } from '../../../../base/browser/ui/dnd/dnd.js';
 
 interface IEditorInputLabel {
@@ -107,6 +108,17 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 
 	private titleContainer: HTMLElement | undefined;
 	private tabsAndActionsContainer: HTMLElement | undefined;
+
+	/** DOM element that renders the `[N]` group-index badge (Coderm). */
+	private editorGroupIndexElement: HTMLElement | undefined;
+
+	/**
+	 * Debounce handle for editor-group-index updates (Coderm).
+	 *
+	 * Coalesces rapid visible-editor changes into a single DOM write
+	 * by scheduling work on the next animation frame.
+	 */
+	private readonly editorGroupIndexScheduler = this._register(new MutableDisposable());
 	private tabsContainer: HTMLElement | undefined;
 	private tabsScrollbar: ScrollableElement | undefined;
 	private tabSizingFixedDisposables: DisposableStore | undefined;
@@ -152,6 +164,7 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 		@ITreeViewsDnDService private readonly treeViewsDragAndDropService: ITreeViewsDnDService,
 		@IEditorResolverService editorResolverService: IEditorResolverService,
 		@IHostService hostService: IHostService,
+		@IConfigurationService private readonly configurationService: IConfigurationService,
 	) {
 		super(parent, editorPartsView, groupsView, groupView, tabsModel, contextMenuService, instantiationService, contextKeyService, keybindingService, notificationService, quickInputService, themeService, editorResolverService, hostService);
 
@@ -162,6 +175,19 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 
 		// React to decorations changing for our resource labels
 		this._register(this.tabResourceLabels.onDidChangeDecorations(() => this.doHandleDecorationsChange()));
+
+		// React to editor group index setting changes (Coderm)
+		this._register(this.configurationService.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('coderm.workbench.editor.editorGroupIndexInTab')) {
+				this.updateEditorGroupIndex();
+			}
+		}));
+
+		// React to visible editors changing to update group index badge (Coderm)
+		// Deferred to next animation frame so group model is fully updated.
+		this._register(this.editorService.onDidVisibleEditorsChange(() => {
+			this.editorGroupIndexScheduler.value = scheduleAtNextAnimationFrame(getWindow(this.parent), () => this.updateEditorGroupIndex());
+		}));
 	}
 
 	protected override create(parent: HTMLElement): HTMLElement {
@@ -185,6 +211,12 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 
 		// Tabs Scrollbar
 		this.tabsScrollbar = this.createTabsScrollbar(this.tabsContainer);
+
+		// Editor Group Index Badge (Coderm)
+		this.editorGroupIndexElement = $('.editor-group-index');
+		this.tabsAndActionsContainer.appendChild(this.editorGroupIndexElement);
+		this._register(scheduleAtNextAnimationFrame(getWindow(this.parent), () => this.updateEditorGroupIndex()));
+
 		this.tabsAndActionsContainer.appendChild(this.tabsScrollbar.getDomNode());
 
 		// Tabs Container listeners
@@ -267,6 +299,28 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 				tabContainer.style.removeProperty('--tab-sizing-current-width');
 			}
 		});
+	}
+
+	/**
+	 * Updates the editor-group-index badge visibility and text (Coderm).
+	 *
+	 * Shows `[N]` (1-based) when the `coderm.workbench.editor.editorGroupIndexInTab`
+	 * setting is enabled **and** at least 2 editor groups are present.
+	 * Hides the badge otherwise.
+	 */
+	private updateEditorGroupIndex(): void {
+		if (!this.editorGroupIndexElement) {
+			return;
+		}
+		const enabled = this.configurationService.getValue<boolean>('coderm.workbench.editor.editorGroupIndexInTab');
+		if (enabled && this.groupsView.groups.length >= 2) {
+			const index = this.groupView.index + 1;
+			this.editorGroupIndexElement.textContent = `[${index}]`;
+			this.editorGroupIndexElement.style.display = 'flex';
+		} else {
+			this.editorGroupIndexElement.textContent = '';
+			this.editorGroupIndexElement.style.display = 'none';
+		}
 	}
 
 	private getTabsScrollbarSizing(): number {
@@ -510,6 +564,7 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 	}
 
 	openEditors(editors: EditorInput[]): boolean {
+		this.updateEditorGroupIndex();
 		return this.handleOpenedEditors();
 	}
 
@@ -687,6 +742,9 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 	}
 
 	setActive(isGroupActive: boolean): void {
+
+		// Update editor group index badge (Coderm)
+		this.updateEditorGroupIndex();
 
 		// Activity has an impact on each tab's active indication
 		this.forEachTab((editor, tabIndex, tabContainer, tabLabelWidget, tabLabel, tabActionBar) => {
