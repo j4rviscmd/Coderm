@@ -344,6 +344,15 @@ export interface IWorkbenchLayoutService extends ILayoutService {
 	resizePart(part: Parts, sizeChangeWidth: number, sizeChangeHeight: number): void;
 
 	/**
+	 * Resizes the border of the currently focused pane in the specified direction.
+	 * For editor groups with multiple groups, tries the editor group grid first,
+	 * then falls back to the workbench grid for tmux-like tree-walking behavior.
+	 *
+	 * @param direction The direction to move the border.
+	 */
+	resizePaneBorder(direction: Direction): void;
+
+	/**
 	 * Register a part to participate in the layout.
 	 */
 	registerPart(part: Part): IDisposable;

@@ -460,4 +460,7 @@ import './contrib/editTelemetry/browser/editTelemetry.contribution.js';
 // Opener
 import './contrib/opener/browser/opener.contribution.js';
 
+// Coderm
+import './contrib/coderm/browser/coderm.contribution.js';
+
 //#endregion

@@ -401,6 +401,20 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 		this.gridWidget.resizeView(groupView, size);
 	}
 
+	/**
+	 * Resizes the border of an editor group in the given direction by delegating
+	 * to the underlying grid widget's {@link Grid.resizeViewBorder} method.
+	 *
+	 * @param group The editor group or its identifier.
+	 * @param direction The cardinal direction to move the border.
+	 * @param delta The pixel amount to move the border. Must be positive.
+	 * @returns `true` if a border was found and resized, `false` otherwise.
+	 */
+	resizeGroupBorder(group: IEditorGroupView | GroupIdentifier, direction: Direction, delta: number): boolean {
+		const groupView = this.assertGroupView(group);
+		return this.gridWidget.resizeViewBorder(groupView, direction, delta);
+	}
+
 	arrangeGroups(arrangement: GroupsArrangement, target: IEditorGroupView | GroupIdentifier = this.activeGroup): void {
 		if (this.count < 2) {
 			return; // require at least 2 groups to show
