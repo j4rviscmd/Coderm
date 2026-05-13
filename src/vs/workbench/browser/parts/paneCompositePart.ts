@@ -6,6 +6,7 @@
 import './media/paneCompositePart.css';
 import { Event } from '../../../base/common/event.js';
 import { IInstantiationService } from '../../../platform/instantiation/common/instantiation.js';
+import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
 import { IProgressIndicator } from '../../../platform/progress/common/progress.js';
 import { PaneComposite, PaneCompositeDescriptor, PaneCompositeRegistry } from '../panecomposite.js';
 import { IPaneComposite } from '../../common/panecomposite.js';
@@ -27,7 +28,7 @@ import { IExtensionService } from '../../services/extensions/common/extensions.j
 import { IComposite } from '../../common/composite.js';
 import { localize } from '../../../nls.js';
 import { CompositeDragAndDropObserver, toggleDropEffect } from '../dnd.js';
-import { EDITOR_DRAG_AND_DROP_BACKGROUND } from '../../common/theme.js';
+import { EDITOR_DRAG_AND_DROP_BACKGROUND, EDITOR_GROUP_ACTIVE_BORDER } from '../../common/theme.js';
 import { IMenuService, MenuId } from '../../../platform/actions/common/actions.js';
 import { ActionsOrientation } from '../../../base/browser/ui/actionbar/actionbar.js';
 import { Gesture, EventType as GestureEventType } from '../../../base/browser/touch.js';
@@ -155,6 +156,7 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
 		@IContextKeyService protected readonly contextKeyService: IContextKeyService,
 		@IExtensionService private readonly extensionService: IExtensionService,
 		@IMenuService protected readonly menuService: IMenuService,
+		@IConfigurationService protected readonly configurationService: IConfigurationService,
 	) {
 		super(
 			notificationService,
@@ -205,6 +207,36 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
 		}));
 	}
 
+	override updateStyles(): void {
+		super.updateStyles();
+
+		const container = this.getContainer();
+		if (!container) {
+			return;
+		}
+
+		// Active pane border (Coderm — tmux-like): show when this
+		// composite part (sidebar / panel / auxiliary bar) holds focus.
+		// The paneFocusContextKey tracks whether the part's content area
+		// is focused; see the focusTracker created in create().
+		const enabled = this.configurationService.getValue<boolean>('coderm.activePaneBorder.enabled') ?? true;
+		if (enabled && this.paneFocusContextKey.get()) {
+			const colorOverride = this.configurationService.getValue<string>('coderm.activePaneBorder.color');
+			const borderColor = colorOverride || this.getColor(EDITOR_GROUP_ACTIVE_BORDER);
+			if (borderColor) {
+				container.classList.add('active-pane-border');
+				container.style.setProperty('--active-pane-border-color', borderColor);
+				const width = this.configurationService.getValue<number>('coderm.activePaneBorder.width') ?? 1;
+				container.style.setProperty('--active-pane-border-width', `${width}px`);
+				return;
+			}
+		}
+
+		container.classList.remove('active-pane-border');
+		container.style.removeProperty('--active-pane-border-color');
+		container.style.removeProperty('--active-pane-border-width');
+	}
+
 	private onDidOpen(composite: IComposite): void {
 		this.activePaneContextKey.set(composite.getId());
 	}
@@ -242,8 +274,21 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
 		this.updateCompositeBar();
 
 		const focusTracker = this._register(trackFocus(parent));
-		this._register(focusTracker.onDidFocus(() => this.paneFocusContextKey.set(true)));
-		this._register(focusTracker.onDidBlur(() => this.paneFocusContextKey.set(false)));
+		this._register(focusTracker.onDidFocus(() => {
+			this.paneFocusContextKey.set(true);
+			this.updateStyles();
+		}));
+		this._register(focusTracker.onDidBlur(() => {
+			this.paneFocusContextKey.set(false);
+			this.updateStyles();
+		}));
+
+		// Active pane border (Coderm): re-apply styles when the user
+		// changes any coderm.activePaneBorder.* setting.
+		this._register(Event.filter(
+			this.configurationService.onDidChangeConfiguration,
+			e => e.affectsConfiguration('coderm.activePaneBorder')
+		)(() => this.updateStyles()));
 	}
 
 	private createEmptyPaneMessage(parent: HTMLElement): void {

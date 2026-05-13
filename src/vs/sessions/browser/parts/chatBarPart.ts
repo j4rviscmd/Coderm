@@ -5,6 +5,7 @@
 
 import './media/chatBarPart.css';
 import { IContextKeyService } from '../../../platform/contextkey/common/contextkey.js';
+import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
 import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
 import { IInstantiationService } from '../../../platform/instantiation/common/instantiation.js';
 import { IKeybindingService } from '../../../platform/keybinding/common/keybinding.js';
@@ -78,7 +79,8 @@ export class ChatBarPart extends AbstractPaneCompositePart { // TODO: should not
 		@IViewDescriptorService viewDescriptorService: IViewDescriptorService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IExtensionService extensionService: IExtensionService,
-		@IMenuService menuService: IMenuService
+		@IMenuService menuService: IMenuService,
+		@IConfigurationService configurationService: IConfigurationService
 	) {
 		super(
 			Parts.CHATBAR_PART,
@@ -109,6 +111,7 @@ export class ChatBarPart extends AbstractPaneCompositePart { // TODO: should not
 			contextKeyService,
 			extensionService,
 			menuService,
+			configurationService,
 		);
 	}
 
