@@ -591,6 +591,10 @@
 			"project": "vscode-workbench"
 		},
 		{
+			"name": "vs/workbench/contrib/coderm",
+			"project": "vscode-workbench"
+		},
+		{
 			"name": "vs/workbench/contrib/inlineCompletions",
 			"project": "vscode-workbench"
 		},
