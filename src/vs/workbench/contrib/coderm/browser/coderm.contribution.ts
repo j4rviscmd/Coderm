@@ -6,7 +6,7 @@
 /**
  * Entry point for Coderm-specific contributions.
  *
- * This side-effect import registers the directional pane-resize commands
- * and their associated configuration (`coderm.workbench.editor.resizeIncrement`).
+ * Side-effect imports register their own configurations and contributions.
  */
 import './resizePaneActions.js';
+import './cursorAutoHide.js';
