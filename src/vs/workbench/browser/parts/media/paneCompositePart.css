@@ -367,3 +367,15 @@
 	margin: 12px;
 	text-align: center;
 }
+
+/* Active pane border (tmux-like) */
+.monaco-workbench .part.sidebar.active-pane-border::after,
+.monaco-workbench .part.panel.active-pane-border::after,
+.monaco-workbench .part.auxiliarybar.active-pane-border::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border: var(--active-pane-border-width, 1px) solid var(--active-pane-border-color, transparent);
+	pointer-events: none;
+	z-index: 100;
+}

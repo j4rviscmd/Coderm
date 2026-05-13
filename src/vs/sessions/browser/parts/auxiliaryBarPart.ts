@@ -7,6 +7,7 @@ import '../../../workbench/browser/parts/auxiliarybar/media/auxiliaryBarPart.css
 import './media/auxiliaryBarPart.css';
 import { localize } from '../../../nls.js';
 import { IContextKeyService } from '../../../platform/contextkey/common/contextkey.js';
+import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
 import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
 import { IInstantiationService } from '../../../platform/instantiation/common/instantiation.js';
 import { IKeybindingService } from '../../../platform/keybinding/common/keybinding.js';
@@ -108,6 +109,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IExtensionService extensionService: IExtensionService,
 		@IMenuService menuService: IMenuService,
+		@IConfigurationService configurationService: IConfigurationService,
 	) {
 		super(
 			Parts.AUXILIARYBAR_PART,
@@ -138,6 +140,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 			contextKeyService,
 			extensionService,
 			menuService,
+			configurationService,
 		);
 
 		this._register(this.layoutService.onDidChangePartVisibility(e => {

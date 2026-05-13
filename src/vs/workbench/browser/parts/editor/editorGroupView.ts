@@ -17,7 +17,7 @@ import { IContextKeyService } from '../../../../platform/contextkey/common/conte
 import { ProgressBar } from '../../../../base/browser/ui/progressbar/progressbar.js';
 import { IThemeService, Themable } from '../../../../platform/theme/common/themeService.js';
 import { editorBackground, contrastBorder } from '../../../../platform/theme/common/colorRegistry.js';
-import { EDITOR_GROUP_HEADER_TABS_BACKGROUND, EDITOR_GROUP_HEADER_NO_TABS_BACKGROUND, EDITOR_GROUP_EMPTY_BACKGROUND, EDITOR_GROUP_HEADER_BORDER } from '../../../common/theme.js';
+import { EDITOR_GROUP_HEADER_TABS_BACKGROUND, EDITOR_GROUP_HEADER_NO_TABS_BACKGROUND, EDITOR_GROUP_EMPTY_BACKGROUND, EDITOR_GROUP_HEADER_BORDER, EDITOR_GROUP_ACTIVE_BORDER } from '../../../common/theme.js';
 import { ICloseEditorsFilter, GroupsOrder, ICloseEditorOptions, ICloseAllEditorsOptions, IEditorReplacement, IActiveEditorActions } from '../../../services/editor/common/editorGroupsService.js';
 import { EditorPanes } from './editorPanes.js';
 import { IEditorProgressService } from '../../../../platform/progress/common/progress.js';
@@ -58,6 +58,7 @@ import { IEditorResolverService } from '../../../services/editor/common/editorRe
 import { IHostService } from '../../../services/host/browser/host.js';
 import { DiffEditorInput } from '../../../common/editor/diffEditorInput.js';
 import { FileSystemProviderCapabilities, IFileService } from '../../../../platform/files/common/files.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 
 export class EditorGroupView extends Themable implements IEditorGroupView {
 
@@ -161,7 +162,8 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 		@IEditorResolverService private readonly editorResolverService: IEditorResolverService,
 		@IHostService private readonly hostService: IHostService,
 		@IDialogService private readonly dialogService: IDialogService,
-		@IFileService private readonly fileService: IFileService
+		@IFileService private readonly fileService: IFileService,
+		@IConfigurationService private readonly configurationService: IConfigurationService
 	) {
 		super(themeService);
 
@@ -594,6 +596,14 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 
 		// Focus
 		this._register(this.onDidFocus(() => this.onDidGainFocus()));
+
+		// Active pane border (Coderm): re-apply styles when the user changes
+		// coderm.activePaneBorder.* settings or when focus enters/leaves the
+		// editor group element. The FOCUS_OUT handler is deferred by one tick so
+		// that the new focus target has already been established.
+		this._register(Event.filter(this.configurationService.onDidChangeConfiguration, e => e.affectsConfiguration('coderm.activePaneBorder'))(() => this.updateStyles()));
+		this._register(addDisposableListener(this.element, EventType.FOCUS_IN, () => this.updateStyles()));
+		this._register(addDisposableListener(this.element, EventType.FOCUS_OUT, () => setTimeout(() => this.updateStyles(), 0)));
 	}
 
 	private onDidGroupModelChange(e: IGroupModelChangeEvent): void {
@@ -2143,6 +2153,35 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 
 		// Editor container
 		this.editorContainer.style.backgroundColor = this.getColor(editorBackground) || '';
+
+		// Active pane border (Coderm — tmux-like): only visible when
+		// 1) the feature is enabled, 2) more than one editor group exists,
+		// 3) this group is the active one, and 4) an element inside the
+		// group currently holds DOM focus. When all conditions are met a
+		// CSS class + custom properties drive the border via a stylesheet
+		// rule; otherwise they are removed.
+		const enabled = this.configurationService.getValue<boolean>('coderm.activePaneBorder.enabled') ?? true;
+		const hasMultipleGroups = this.groupsView.groups.length > 1;
+		const editorHasFocus = this.element.contains(getActiveElement());
+
+		if (enabled && hasMultipleGroups && this.active && editorHasFocus) {
+			const colorOverride = this.configurationService.getValue<string>('coderm.activePaneBorder.color');
+			const borderColor = colorOverride || this.getColor(EDITOR_GROUP_ACTIVE_BORDER);
+			if (borderColor) {
+				this.element.classList.add('active-pane-border');
+				this.element.style.setProperty('--active-pane-border-color', borderColor);
+				const width = this.configurationService.getValue<number>('coderm.activePaneBorder.width') ?? 1;
+				this.element.style.setProperty('--active-pane-border-width', `${width}px`);
+			} else {
+				this.element.classList.remove('active-pane-border');
+				this.element.style.removeProperty('--active-pane-border-color');
+				this.element.style.removeProperty('--active-pane-border-width');
+			}
+		} else {
+			this.element.classList.remove('active-pane-border');
+			this.element.style.removeProperty('--active-pane-border-color');
+			this.element.style.removeProperty('--active-pane-border-width');
+		}
 	}
 
 	//#endregion
