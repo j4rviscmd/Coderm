@@ -83,10 +83,10 @@ import { getPiiPathsFromEnvironment, getTelemetryLevel, isInternalTelemetry, Nul
 import { IUpdateService } from '../../platform/update/common/update.js';
 import { UpdateChannel } from '../../platform/update/common/updateIpc.js';
 import { NotAvailableUpdateDialog } from '../../platform/update/electron-main/notAvailableUpdateDialog.js';
-import { DarwinUpdateService } from '../../platform/update/electron-main/updateService.darwin.js';
+import { CodermDarwinUpdateService } from '../../platform/update/electron-main/codermUpdateService.darwin.js';
 import { LinuxUpdateService } from '../../platform/update/electron-main/updateService.linux.js';
 import { SnapUpdateService } from '../../platform/update/electron-main/updateService.snap.js';
-import { Win32UpdateService } from '../../platform/update/electron-main/updateService.win32.js';
+import { CodermWin32UpdateService } from '../../platform/update/electron-main/codermUpdateService.win32.js';
 import { IOpenURLOptions, IURLService } from '../../platform/url/common/url.js';
 import { URLHandlerChannelClient, URLHandlerRouter } from '../../platform/url/common/urlIpc.js';
 import { NativeURLService } from '../../platform/url/common/urlService.js';
@@ -1028,7 +1028,7 @@ export class CodeApplication extends Disposable {
 		// Update
 		switch (process.platform) {
 			case 'win32':
-				services.set(IUpdateService, new SyncDescriptor(Win32UpdateService));
+				services.set(IUpdateService, new SyncDescriptor(CodermWin32UpdateService));
 				break;
 
 			case 'linux':
@@ -1040,7 +1040,7 @@ export class CodeApplication extends Disposable {
 				break;
 
 			case 'darwin':
-				services.set(IUpdateService, new SyncDescriptor(DarwinUpdateService));
+				services.set(IUpdateService, new SyncDescriptor(CodermDarwinUpdateService));
 				break;
 		}
 
