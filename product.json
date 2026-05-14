@@ -244,5 +244,8 @@
 		"extensionUrlTemplate": "https://{publisher}.gallery.vscode.io/_apis/public/gallery/publisher/{publisher}/extension/{name}/latest/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage",
 		"nlsBaseUrl": ""
 	},
-	"quality": "stable"
+	"quality": "coderm",
+	"target": "user",
+	"updateUrl": "https://github.com/j4rviscmd/Coderm",
+	"downloadUrl": "https://github.com/j4rviscmd/Coderm/releases/latest"
 }
