@@ -702,6 +702,11 @@ function registerFocusEditorGroupAtIndexCommands(): void {
 					return groups[groupIndex].focus();
 				}
 
+				// Coderm: suppress new group creation when targeting non-existent index
+				if (configurationService.getValue<boolean>('coderm.workbench.editor.preventNewGroupOnFocus')) {
+					return;
+				}
+
 				// Group does not exist: create new by splitting the active one of the last group
 				const direction = preferredSideBySideGroupDirection(configurationService);
 				const lastGroup = editorGroupsService.findGroup({ location: GroupLocation.LAST });
