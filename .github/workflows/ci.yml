@@ -1,0 +1,33 @@
+# CI workflow: compile check on every PR targeting main.
+# A passing run is required before merge.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+# Only one run per branch; newer pushes cancel older in-progress runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    name: Compile check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # compile: TypeScript compilation (workbench + extensions).
+      # compile-build: additional build step required for packaged distributions.
+      - run: npm run compile
+
+      - run: npm run compile-build

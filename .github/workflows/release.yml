@@ -1,0 +1,186 @@
+# Release workflow: builds and publishes Coderm installers to GitHub Releases.
+# Triggers on every push to main (with duplicate-version skip) or manual dispatch.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only one release run at a time; never cancel an in-progress release.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # Reads the version from package.json and checks whether a GitHub Release
+  # for that version already exists. If it does, subsequent jobs are skipped.
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      # Full history is needed so that `gh release view` can resolve the tag.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for existing release
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No release for ${TAG}. Proceeding."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Builds Coderm for all three targets in parallel.
+  # fail-fast is disabled so one platform failure does not cancel the others.
+  build:
+    name: Build (${{ matrix.target }})
+    needs: preflight
+    if: needs.preflight.outputs.skip != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            os: macos-14
+            arch: arm64
+            artifact: Coderm-arm64.dmg
+          - target: darwin-x64
+            os: macos-13
+            arch: x64
+            artifact: Coderm-x64.dmg
+          - target: win32-x64
+            os: windows-2022
+            arch: x64
+            artifact: CodermSetup-x64.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      # VSCODE_ARCH and VSCODE_QUALITY are consumed by the upstream gulp tasks.
+      VSCODE_ARCH: ${{ matrix.arch }}
+      VSCODE_QUALITY: coderm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # macOS builds require Python for native module compilation (node-gyp).
+      - uses: actions/setup-python@v5
+        if: runner.os == 'macOS'
+        with:
+          python-version: '3.12'
+
+      - run: npm ci
+
+      - run: npm run compile-build
+
+      # Invokes the upstream VSCode gulp task for the target platform,
+      # producing the unpacked app in .build/electron/.
+      - name: Build distribution
+        run: npm run gulp vscode-${{ matrix.target }}
+
+      - name: Create macOS DMG
+        if: runner.os == 'macOS'
+        run: node build/darwin/create-dmg.ts "$(pwd)/.build/electron/VSCode-darwin-${{ matrix.arch }}" "$(pwd)/.build"
+
+      - name: Rename macOS artifacts
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          DMG_PATH=$(find .build -name "*.dmg" -type f | head -1)
+          if [ -z "$DMG_PATH" ]; then
+            echo "ERROR: No DMG file found"
+            exit 1
+          fi
+          cp "$DMG_PATH" "${{ matrix.artifact }}"
+
+      - name: Rename Windows artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setupPath = Get-ChildItem -Path ".build\win32-x64\user\setup" -Filter "*.exe" | Select-Object -First 1
+          if (-not $setupPath) {
+            $setupPath = Get-ChildItem -Path ".build" -Recurse -Filter "*Setup*.exe" | Select-Object -First 1
+          }
+          if (-not $setupPath) {
+            Write-Error "No Windows setup exe found"
+            exit 1
+          }
+          Copy-Item $setupPath.FullName -Destination "${{ matrix.artifact }}"
+
+      # Artifacts are kept for 1 day -- just long enough for the create-release job.
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+          retention-days: 1
+
+  create-release:
+    name: Create Release
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release with assets
+        env:
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: |
+          echo "Creating release ${TAG}"
+          gh release create "${TAG}" \
+            --title "Coderm ${TAG}" \
+            --generate-notes \
+            artifacts/Coderm-arm64.dmg \
+            artifacts/Coderm-x64.dmg \
+            artifacts/CodermSetup-x64.exe
+
+  # If any downstream job fails, remove the draft release and its tag to
+  # keep the Releases page clean. Only runs when the preflight did not skip.
+  cleanup-on-failure:
+    name: Cleanup on failure
+    needs: [preflight, build, create-release]
+    if: failure() && needs.preflight.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete draft release and tag
+        env:
+          TAG: ${{ needs.preflight.outputs.tag }}
+        run: |
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Deleting draft release ${TAG}"
+            gh release delete "${TAG}" --yes --cleanup-tag
+          fi
