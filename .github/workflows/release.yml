@@ -72,7 +72,7 @@ jobs:
             arch: x64
             artifact: CodermSetup-x64.exe
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 360
     env:
       # VSCODE_ARCH and VSCODE_QUALITY are consumed by the upstream gulp tasks.
       VSCODE_ARCH: ${{ matrix.arch }}
