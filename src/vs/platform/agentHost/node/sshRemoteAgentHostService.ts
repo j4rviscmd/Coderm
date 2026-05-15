@@ -435,7 +435,7 @@ export class SSHRemoteAgentHostMainService extends Disposable implements ISSHRem
 	 * Override hook for tests to shorten the relay-creation timeout used on
 	 * the `replaceRelay` reconnect path. See {@link RECONNECT_RELAY_TIMEOUT_MS}.
 	 */
-	protected relayCreationTimeoutMs: number = RECONNECT_RELAY_TIMEOUT_MS;
+	public relayCreationTimeoutMs: number = RECONNECT_RELAY_TIMEOUT_MS;
 
 	constructor(
 		@ILogService private readonly _logService: ILogService,
