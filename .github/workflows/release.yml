@@ -77,6 +77,7 @@ jobs:
       # VSCODE_ARCH and VSCODE_QUALITY are consumed by the upstream gulp tasks.
       VSCODE_ARCH: ${{ matrix.arch }}
       VSCODE_QUALITY: coderm
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
