@@ -28,8 +28,5 @@ jobs:
 
       - run: npm ci
 
-      # compile: TypeScript compilation (workbench + extensions).
-      # compile-build: additional build step required for packaged distributions.
+      # TypeScript compilation (workbench + extensions).
       - run: npm run compile
-
-      - run: npm run compile-build
