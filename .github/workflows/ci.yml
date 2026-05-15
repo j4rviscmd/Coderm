@@ -61,3 +61,5 @@ jobs:
           npm ci
 
       - run: npx tsc -p src/tsconfig.json --noEmit
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
