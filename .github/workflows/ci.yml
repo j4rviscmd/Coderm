@@ -1,4 +1,4 @@
-# CI workflow: compile check on every PR targeting main.
+# CI workflow: lint + type check on every PR targeting main.
 # A passing run is required before merge.
 name: CI
 
@@ -12,21 +12,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  compile:
-    name: Compile check
+  lint:
+    name: ESLint
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
-      - run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
 
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
 
-      - run: npm ci
+      - uses: actions/cache@v4
+        id: cache-nm
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
-      # TypeScript compilation (workbench + extensions).
-      - run: npm run compile
+      - name: Install dependencies
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+          npm ci
+
+      - run: node --experimental-strip-types build/eslint.ts
+
+  typecheck:
+    name: Type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/cache@v4
+        id: cache-nm
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+          npm ci
+
+      - run: npx tsc -p src/tsconfig.json --noEmit
