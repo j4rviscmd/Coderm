@@ -85,7 +85,11 @@ function buildWin32Setup(arch: string, target: string): task.CallbackTask {
 			NameShort: product.nameShort,
 			DirName: product.win32DirName,
 			Version: pkg.version,
-			RawVersion: pkg.version.replace(/-\w+$/, ''),
+			// Strip the full prerelease suffix (e.g. "-1.100.0") to produce a
+			// numeric-only version string required by Inno Setup. Uses /.+$/ instead
+			// of /\w+$/ so that dots and other non-word characters in the suffix
+			// are also matched.
+			RawVersion: pkg.version.replace(/-.+$/, ''),
 			Commit: commit,
 			NameVersion: product.win32NameVersion + (target === 'user' ? ' (User)' : ''),
 			ExeBasename: product.nameShort,
