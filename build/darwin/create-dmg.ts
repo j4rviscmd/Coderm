@@ -173,6 +173,9 @@ async function main(buildDir?: string, outDir?: string): Promise<void> {
 		case 'exploration':
 			title = 'VS Code Exploration';
 			break;
+		case 'coderm':
+			title = 'Coderm';
+			break;
 	}
 
 	if (!fs.existsSync(appPath)) {

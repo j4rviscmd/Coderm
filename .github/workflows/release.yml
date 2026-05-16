@@ -97,13 +97,13 @@ jobs:
       - run: npm run gulp compile-build-without-mangling
 
       # Invokes the upstream VSCode gulp task for the target platform,
-      # producing the unpacked app in .build/electron/.
+      # producing the unpacked app in the repo's parent directory.
       - name: Build distribution
         run: npm run gulp vscode-${{ matrix.target }}
 
       - name: Create macOS DMG
         if: runner.os == 'macOS'
-        run: node build/darwin/create-dmg.ts "$(pwd)/.build/electron" "$(pwd)/.build"
+        run: node build/darwin/create-dmg.ts "$(pwd)/.." "$(pwd)/.build"
 
       - name: Rename macOS artifacts
         if: runner.os == 'macOS'
