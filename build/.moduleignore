@@ -240,6 +240,10 @@ zone.js/dist/**
 @github/copilot-sdk/node_modules/@github/copilot-win32-arm64/**
 @github/copilot-sdk/node_modules/@github/copilot-win32-x64/**
 
+# @anthropic-ai/claude-agent-sdk - strip cross-platform vendor binaries
+# rcedit fails on non-Windows .node files during Windows packaging
+@anthropic-ai/claude-agent-sdk/vendor/**
+
 # es5-ext is quarantined protestware (sonatype-2022-2248). It is only consumed
 # in websocket's browser.js inside a try/catch with a globalThis fallback,
 # so it is unnecessary in the browsers/runtimes VS Code supports.
