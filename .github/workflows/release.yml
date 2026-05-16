@@ -103,7 +103,7 @@ jobs:
 
       - name: Create macOS DMG
         if: runner.os == 'macOS'
-        run: node build/darwin/create-dmg.ts "$(pwd)/.build/electron/VSCode-darwin-${{ matrix.arch }}" "$(pwd)/.build"
+        run: node build/darwin/create-dmg.ts "$(pwd)/.build/electron" "$(pwd)/.build"
 
       - name: Rename macOS artifacts
         if: runner.os == 'macOS'
