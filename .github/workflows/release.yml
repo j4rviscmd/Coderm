@@ -72,7 +72,7 @@ jobs:
             arch: x64
             artifact: CodermSetup-x64.exe
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 360
+    timeout-minutes: 720
     env:
       # VSCODE_ARCH and VSCODE_QUALITY are consumed by the upstream gulp tasks.
       VSCODE_ARCH: ${{ matrix.arch }}
@@ -94,7 +94,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run compile-build
+      - run: npm run gulp compile-build-without-mangling
 
       # Invokes the upstream VSCode gulp task for the target platform,
       # producing the unpacked app in .build/electron/.
