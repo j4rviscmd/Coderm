@@ -281,7 +281,7 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 		let version = packageJson.version;
 		const quality = (product as { quality?: string }).quality;
 
-		if (quality && quality !== 'stable') {
+		if (quality && quality !== 'stable' && !version.includes('-' + quality)) {
 			version += '-' + quality;
 		}
 
