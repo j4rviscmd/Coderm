@@ -124,7 +124,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $setupPath = Get-ChildItem -Path ".build\win32-x64\user\setup" -Filter "*.exe" | Select-Object -First 1
+          $setupPath = Get-ChildItem -Path ".build\win32-x64\user-setup" -Filter "*.exe" | Select-Object -First 1
           if (-not $setupPath) {
             $setupPath = Get-ChildItem -Path ".build" -Recurse -Filter "*Setup*.exe" | Select-Object -First 1
           }
