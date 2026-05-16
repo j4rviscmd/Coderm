@@ -112,7 +112,10 @@ function releaseToIUpdate(release: IGitHubRelease, asset: IGitHubReleaseAsset): 
 
 /**
  * Checks if a GitHub release is newer than the current version.
- * Compares semver product versions.
+ * Compares upstream semver first, then Coderm semver.
+ *
+ * Version format: {upstream_version}[-coderm.{coderm_major}.{coderm_minor}.{coderm_patch}]
+ * Examples: "1.121.0", "1.121.0-coderm", "1.121.0-coderm.0.1.0"
  */
 function isNewerRelease(currentVersion: string | undefined, release: IGitHubRelease): boolean {
 	if (!currentVersion) {
@@ -121,22 +124,25 @@ function isNewerRelease(currentVersion: string | undefined, release: IGitHubRele
 
 	const releaseVersion = release.tag_name.replace(/^v/, '');
 
-	// Parse semver
-	const parseSemver = (v: string) => {
-		const parts = v.split('.').map(p => parseInt(p, 10));
-		return { major: parts[0] || 0, minor: parts[1] || 0, patch: parts[2] || 0 };
+	const parseVersion = (v: string) => {
+		const match = v.match(/^(\d+)\.(\d+)\.(\d+)(?:-coderm(?:\.(\d+)\.(\d+)\.(\d+))?)?/);
+		if (!match) {
+			return { major: 0, minor: 0, patch: 0, codermMajor: 0, codermMinor: 0, codermPatch: 0 };
+		}
+		const n = match.slice(1).map(s => s ? parseInt(s, 10) : 0);
+		return { major: n[0], minor: n[1], patch: n[2], codermMajor: n[3], codermMinor: n[4], codermPatch: n[5] };
 	};
 
-	const current = parseSemver(currentVersion);
-	const next = parseSemver(releaseVersion);
+	const current = parseVersion(currentVersion);
+	const next = parseVersion(releaseVersion);
 
-	if (next.major !== current.major) {
-		return next.major > current.major;
+	const fields: (keyof typeof current)[] = ['major', 'minor', 'patch', 'codermMajor', 'codermMinor', 'codermPatch'];
+	for (const field of fields) {
+		if (next[field] !== current[field]) {
+			return next[field] > current[field];
+		}
 	}
-	if (next.minor !== current.minor) {
-		return next.minor > current.minor;
-	}
-	return next.patch > current.patch;
+	return false;
 }
 
 /**
