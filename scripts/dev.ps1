@@ -1,16 +1,28 @@
-# dev.ps1 - Coderm one-command development launcher (Windows PowerShell)
-#
-# Usage:
-#   .\scripts\dev.ps1 [args...]
-#
-#   All arguments are forwarded to scripts/code.ps1 (the Electron launcher).
-#
-# Behaviour:
-#   1. Resolves the project root from the script location.
-#   2. Runs a full compilation (`npm run compile`) when out/ is missing.
-#   3. Starts `npm run watch` as a background process for incremental builds.
-#   4. Launches Coderm via scripts/code.ps1.
-#   5. On exit (normal or error), cleans up the background watch process.
+<#
+.SYNOPSIS
+    Coderm one-command development launcher for Windows PowerShell.
+
+.DESCRIPTION
+    Prepares and launches Coderm in development mode. The script performs a
+    full compilation, starts an incremental watch build in the background,
+    then launches the Coderm Electron application. The background watch
+    process is cleaned up automatically when the application exits or on error.
+
+    All arguments passed to this script are forwarded to scripts/code.ps1
+    (the Electron launcher).
+
+.EXAMPLE
+    .\scripts\dev.ps1
+    Starts Coderm with default settings.
+
+.EXAMPLE
+    .\scripts\dev.ps1 --remote-debugging-port=9222
+    Starts Coderm with CDP debugging enabled on port 9222.
+
+.NOTES
+    Requires Node.js and npm on PATH. The project root is resolved
+    automatically from the script's location.
+#>
 
 $ErrorActionPreference = 'Stop'
 
@@ -21,23 +33,15 @@ Set-Location $Root
 $watchProcess = $null
 
 try {
-	# Full build if out/ doesn't exist
-	if (-not (Test-Path (Join-Path $Root 'out'))) {
-		Write-Host '[dev] out/ not found, running initial compilation...' -ForegroundColor Cyan
-		npm run compile
-		if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-		Write-Host '[dev] Initial compilation complete.' -ForegroundColor Cyan
-	}
+	# Full compile to ensure out/ is fully populated before launch.
+	Write-Host '[dev] Running compilation...' -ForegroundColor Cyan
+	npm run compile
+	if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+	Write-Host '[dev] Compilation complete.' -ForegroundColor Cyan
 
-	# Start watch in background
+	# Start watch in background for incremental builds during development.
 	Write-Host '[dev] Starting watch in background...' -ForegroundColor Cyan
-	$watchProcess = Start-Process -FilePath 'npm' -ArgumentList 'run', 'watch' -PassThru -NoNewWindow
-	Start-Sleep -Seconds 2
-	# Verify the watch process is still running after a brief delay.
-	if ($watchProcess.HasExited) {
-		Write-Host '[dev] ERROR: watch process exited immediately.' -ForegroundColor Red
-		exit 1
-	}
+	$watchProcess = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'npm', 'run', 'watch' -PassThru -NoNewWindow
 
 	# Launch app (forwards all arguments to code.ps1)
 	Write-Host '[dev] Launching Coderm...' -ForegroundColor Cyan
