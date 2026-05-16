@@ -49,7 +49,7 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # Builds Coderm for all three targets in parallel.
+  # Builds Coderm for macOS (ARM) and Windows (x64) in parallel.
   # fail-fast is disabled so one platform failure does not cancel the others.
   build:
     name: Build (${{ matrix.target }})
@@ -63,10 +63,6 @@ jobs:
             os: macos-14
             arch: arm64
             artifact: Coderm-arm64.dmg
-          - target: darwin-x64
-            os: macos-13
-            arch: x64
-            artifact: Coderm-x64.dmg
           - target: win32-x64
             os: windows-2022
             arch: x64
@@ -162,7 +158,6 @@ jobs:
             --title "Coderm ${TAG}" \
             --generate-notes \
             artifacts/Coderm-arm64.dmg \
-            artifacts/Coderm-x64.dmg \
             artifacts/CodermSetup-x64.exe
 
   # If any downstream job fails, remove the draft release and its tag to
