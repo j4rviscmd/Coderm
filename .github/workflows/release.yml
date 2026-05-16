@@ -97,6 +97,10 @@ jobs:
       - name: Build distribution
         run: npm run gulp vscode-${{ matrix.target }}
 
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        run: npm run gulp vscode-win32-x64-user-setup
+
       - name: Create macOS DMG
         if: runner.os == 'macOS'
         run: node build/darwin/create-dmg.ts "$(pwd)/.." "$(pwd)/.build"
