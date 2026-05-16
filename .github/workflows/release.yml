@@ -97,6 +97,10 @@ jobs:
       - name: Build distribution
         run: npm run gulp vscode-${{ matrix.target }}
 
+      - name: Copy Inno Updater
+        if: runner.os == 'Windows'
+        run: npm run gulp vscode-win32-x64-inno-updater
+
       - name: Build Windows installer
         if: runner.os == 'Windows'
         run: npm run gulp vscode-win32-x64-user-setup
