@@ -11,6 +11,7 @@
 import './activePaneBorder.js';
 import './autoMaximizeActions.js';
 import './cursorAutoHide.js';
+import './devTitlePrefix.js';
 import './editorGroupIndex.js';
 import './preventNewGroupOnFocus.js';
 import './resizePaneActions.js';
