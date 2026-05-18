@@ -1,4 +1,5 @@
 {
+	"commit": "df0fbff4ed576bb7812ba3a9036d8e80c4a450c5",
 	"nameShort": "Coderm",
 	"nameLong": "Coderm",
 	"applicationName": "coderm",
@@ -13,6 +14,7 @@
 	"serverLicensePrompt": "",
 	"serverApplicationName": "coderm-server",
 	"serverDataFolderName": ".coderm-server",
+	"serverDownloadUrlTemplate": "https://github.com/j4rviscmd/Coderm/releases/download/v${version}/coderm-reh-${os}-${arch}.tar.gz",
 	"tunnelApplicationName": "coderm-tunnel",
 	"win32DirName": "Coderm",
 	"win32NameVersion": "Coderm",
@@ -83,7 +85,26 @@
 				},
 				"publisherDisplayName": "Microsoft"
 			}
+		},
+		{
+			"name": "jeanp413.open-remote-ssh",
+			"version": "0.1.2",
+			"sha256": "4c4305484d35a119eeac6ba57c77e8cc181b1e21a748f80a7b79b967e89a5681",
+			"repo": "https://github.com/jeanp413/open-remote-ssh",
+			"metadata": {
+				"id": "bba2d7c0-c7c8-fe0d-d0aa-86222f28ea39",
+				"publisherId": {
+					"publisherId": "8f92e487-7d76-f6b0-e49e-cc9e972053dc",
+					"publisherName": "jeanp413",
+					"displayName": "Jean Pierre",
+					"flags": ""
+				},
+				"publisherDisplayName": "Jean Pierre"
+			}
 		}
+	],
+	"extensionAllowedProposedApi": [
+		"jeanp413.open-remote-ssh"
 	],
 	"defaultChatAgent": {
 		"extensionId": "GitHub.copilot",

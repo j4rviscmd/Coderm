@@ -1,4 +1,4 @@
-# Release workflow: builds and publishes Coderm installers to GitHub Releases.
+# Release workflow: builds and publishes Coderm installers + REH server to GitHub Releases.
 # Triggers on every push to main (with duplicate-version skip) or manual dispatch.
 name: Release
 
@@ -17,7 +17,8 @@ permissions:
 
 jobs:
   # Reads the version from package.json and checks whether a GitHub Release
-  # for that version already exists. If it does, subsequent jobs are skipped.
+  # for that version already exists. Also detects REH-related code changes
+  # to decide whether to rebuild the server or copy from previous release.
   preflight:
     name: Preflight
     runs-on: ubuntu-latest
@@ -25,6 +26,7 @@ jobs:
       skip: ${{ steps.check.outputs.skip }}
       version: ${{ steps.check.outputs.version }}
       tag: ${{ steps.check.outputs.tag }}
+      reh_changed: ${{ steps.reh.outputs.reh_changed }}
     steps:
       # Full history is needed so that `gh release view` can resolve the tag.
       - uses: actions/checkout@v4
@@ -47,6 +49,58 @@ jobs:
           else
             echo "No release for ${TAG}. Proceeding."
             echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Determines whether the REH server needs to be rebuilt or can be
+      # copied from the previous release. Skips the build-reh job entirely
+      # when no REH-related source paths have changed, saving ~60 min of
+      # CI time per release.
+      #
+      # Decision tree:
+      #   1. No previous release exists  -> build (first release)
+      #   2. Previous release lacks REH   -> build (backfill)
+      #   3. git diff shows REH paths     -> build (code changed)
+      #   4. No REH-relevant diff         -> skip (reuse assets)
+      - name: Detect REH changes
+        id: reh
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous release. Building REH."
+            echo "reh_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check if previous release has REH assets
+          HAS_REH=$(gh release view "$PREV_TAG" --json assets --jq '[.assets[] | select(.name | startswith("coderm-reh-"))] | length')
+          if [ "$HAS_REH" = "0" ]; then
+            echo "Previous release has no REH assets. Building REH."
+            echo "reh_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Watched paths: any change under these directories/files
+          # indicates the REH server output may differ from the
+          # previous release and must be rebuilt.
+          CHANGES=$(git diff --name-only "$PREV_TAG" HEAD -- \
+            "src/vs/server/" \
+            "remote/" \
+            "build/gulpfile.reh.ts" \
+            "src/vs/platform/remote/" \
+            "src/vs/workbench/services/remote/" \
+            "src/vs/workbench/api/node/extensionHostProcess.ts" \
+            2>/dev/null || echo "diff-failed")
+
+          if [ -z "$CHANGES" ]; then
+            echo "No REH changes since ${PREV_TAG}. Will copy from previous release."
+            echo "reh_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "REH changes detected:"
+            echo "$CHANGES"
+            echo "reh_changed=true" >> "$GITHUB_OUTPUT"
           fi
 
   # Builds Coderm for macOS (ARM) and Windows (x64) in parallel.
@@ -89,6 +143,24 @@ jobs:
           python-version: '3.12'
 
       - run: npm ci
+
+      # Pre-download open-remote-ssh (not on MS Marketplace) so the
+      # builtInExtensions gulp task finds it already present and skips
+      # the marketplace download that would otherwise fail.
+      #
+      # This is a Coderm-specific extension bundled into every release
+      # to provide SSH remote development without requiring a Microsoft
+      # account or the proprietary VS Code Remote-SSH extension.
+      - name: Pre-download open-remote-ssh extension
+        shell: bash
+        run: |
+          EXT_DIR=".build/builtInExtensions/jeanp413.open-remote-ssh"
+          mkdir -p "$EXT_DIR"
+          curl -sL "https://github.com/jeanp413/open-remote-ssh/releases/download/v0.1.2/open-remote-ssh-0.1.2.vsix" -o /tmp/open-remote-ssh.vsix
+          unzip -q -o /tmp/open-remote-ssh.vsix -d /tmp/open-remote-ssh-ext 'extension/*'
+          cp -r /tmp/open-remote-ssh-ext/extension/* "$EXT_DIR/"
+          rm -rf /tmp/open-remote-ssh-ext /tmp/open-remote-ssh.vsix
+          echo "Pre-downloaded open-remote-ssh $(node -p "require('./$EXT_DIR/package.json').version")"
 
       - run: npm run gulp compile-build-without-mangling
 
@@ -142,20 +214,218 @@ jobs:
           path: ${{ matrix.artifact }}
           retention-days: 1
 
+  # Builds the REH (Remote Extension Host) server for 5 platforms.
+  # Only runs when REH-related code has changed since the previous release
+  # (controlled by the preflight job's reh_changed output).
+  #
+  # The REH server is the headless VS Code backend that runs on remote
+  # machines. It is downloaded by the Coderm client via the URL template
+  # configured in product.json's serverDownloadUrlTemplate field.
+  build-reh:
+    name: Build REH (${{ matrix.target }})
+    needs: preflight
+    if: needs.preflight.outputs.skip != 'true' && needs.preflight.outputs.reh_changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-latest
+            arch: x64
+            platform: linux
+          - target: linux-arm64
+            os: ubuntu-latest
+            arch: arm64
+            platform: linux
+          - target: linux-armhf
+            os: ubuntu-latest
+            arch: armhf
+            platform: linux
+          - target: darwin-arm64
+            os: macos-14
+            arch: arm64
+            platform: darwin
+          - target: darwin-x64
+            os: macos-13
+            arch: x64
+            platform: darwin
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 720
+    env:
+      VSCODE_ARCH: ${{ matrix.arch }}
+      VSCODE_QUALITY: coderm
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        if: runner.os == 'macOS'
+        with:
+          python-version: '3.12'
+
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+          df -h
+
+      - name: Set up QEMU
+        if: matrix.platform == 'linux' && matrix.arch != 'x64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Create swap
+        if: runner.os == 'Linux'
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
+      - run: npm ci
+
+      - name: Pre-download open-remote-ssh extension
+        shell: bash
+        run: |
+          EXT_DIR=".build/builtInExtensions/jeanp413.open-remote-ssh"
+          mkdir -p "$EXT_DIR"
+          curl -sL "https://github.com/jeanp413/open-remote-ssh/releases/download/v0.1.2/open-remote-ssh-0.1.2.vsix" -o /tmp/open-remote-ssh.vsix
+          unzip -q -o /tmp/open-remote-ssh.vsix -d /tmp/open-remote-ssh-ext 'extension/*'
+          cp -r /tmp/open-remote-ssh-ext/extension/* "$EXT_DIR/"
+          rm -rf /tmp/open-remote-ssh-ext /tmp/open-remote-ssh.vsix
+          echo "Pre-downloaded open-remote-ssh $(node -p "require('./$EXT_DIR/package.json').version")"
+
+      - run: npm run gulp compile-build-without-mangling
+
+      - name: Build REH server
+        env:
+          MANGLER_MAX_WORKERS: 1
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: npm run gulp vscode-reh-${{ matrix.platform }}-${{ matrix.arch }}-min
+
+      # Cross-compile native Node.js modules for ARM architectures.
+      #
+      # The JS bundle produced by the REH gulp task is platform-independent,
+      # but native addons (e.g. node-pty, native-watchdog, vscode-ripgrep)
+      # are compiled for the runner's x64 architecture. This step:
+      #   1. Removes the x64-compiled node_modules from the REH output
+      #   2. Runs `npm install --omit=dev && npm rebuild` inside a Docker
+      #      container using QEMU-emulated ARM Node.js so that .node binaries
+      #      match the target architecture (arm64 or armv7).
+      #
+      # Only runs for Linux ARM targets (arm64/armhf) since macOS ARM builds
+      # run natively on macos-14 (M1) runners.
+      - name: Cross-compile native modules for ARM
+        if: matrix.platform == 'linux' && matrix.arch != 'x64'
+        shell: bash
+        run: |
+          NODE_MAJOR=$(node -v | sed 's/v\([0-9]*\).*/\1/')
+          case "${{ matrix.arch }}" in
+            arm64) DOCKER_PLATFORM="linux/arm64" ;;
+            *)     DOCKER_PLATFORM="linux/arm/v7" ;;
+          esac
+          REH_DIR="$(pwd)/../vscode-reh-linux-${{ matrix.arch }}"
+          echo "Rebuilding native modules for ${{ matrix.arch }} via Docker (${DOCKER_PLATFORM})"
+          cd "${REH_DIR}"
+          rm -rf node_modules
+          docker run --rm --platform "${DOCKER_PLATFORM}" \
+            -v "$(pwd)/..":/build \
+            -w "/build/vscode-reh-linux-${{ matrix.arch }}" \
+            "node:${NODE_MAJOR}" \
+            sh -c "npm install --omit=dev && npm rebuild"
+
+      - name: Package REH tarball
+        shell: bash
+        run: |
+          cd ..
+          tar czf "${{ github.workspace }}/coderm-reh-${{ matrix.target }}.tar.gz" \
+            "vscode-reh-${{ matrix.platform }}-${{ matrix.arch }}"
+
+      - name: Upload REH artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coderm-reh-${{ matrix.target }}
+          path: coderm-reh-${{ matrix.target }}.tar.gz
+          retention-days: 1
+
   create-release:
     name: Create Release
-    needs: [preflight, build]
+    needs: [preflight, build, build-reh]
+    if: >-
+      always() &&
+      needs.preflight.outputs.skip != 'true' &&
+      needs.build.result == 'success' &&
+      (needs.build-reh.result == 'success' || needs.build-reh.result == 'skipped')
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Download desktop artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: "Coderm-*"
           path: artifacts
           merge-multiple: true
+
+      - name: Download REH build artifacts
+        if: needs.preflight.outputs.reh_changed == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "coderm-reh-*"
+          path: artifacts
+          merge-multiple: true
+
+      # Reuses REH tarballs from the most recent previous release instead of
+      # rebuilding them, which saves ~60 minutes of CI time. This only runs
+      # when the preflight job determined that no REH-relevant code has changed
+      # since the previous release.
+      - name: Copy REH from previous release
+        if: needs.preflight.outputs.reh_changed == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+          if [ -z "$PREV_TAG" ]; then
+            echo "ERROR: No previous release to copy REH from"
+            exit 1
+          fi
+          echo "Copying REH assets from ${PREV_TAG}"
+          for target in linux-x64 linux-arm64 linux-armhf darwin-arm64 darwin-x64; do
+            echo "Downloading coderm-reh-${target}.tar.gz from ${PREV_TAG}"
+            gh release download "${PREV_TAG}" \
+              --pattern "coderm-reh-${target}.tar.gz" \
+              --dir artifacts
+          done
+
+      - name: Verify all assets
+        run: |
+          echo "Verifying assets..."
+          MISSING=""
+          for f in Coderm-arm64.dmg CodermSetup-x64.exe \
+                   coderm-reh-linux-x64.tar.gz coderm-reh-linux-arm64.tar.gz \
+                   coderm-reh-linux-armhf.tar.gz coderm-reh-darwin-arm64.tar.gz \
+                   coderm-reh-darwin-x64.tar.gz; do
+            if [ ! -f "artifacts/$f" ]; then
+              MISSING="$MISSING $f"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "ERROR: Missing assets:$MISSING"
+            ls -la artifacts/
+            exit 1
+          fi
+          echo "All assets present."
+          ls -la artifacts/
 
       - name: Create release with assets
         env:
@@ -166,13 +436,19 @@ jobs:
             --title "Coderm ${TAG}" \
             --generate-notes \
             artifacts/Coderm-arm64.dmg \
-            artifacts/CodermSetup-x64.exe
+            artifacts/CodermSetup-x64.exe \
+            artifacts/coderm-reh-linux-x64.tar.gz \
+            artifacts/coderm-reh-linux-arm64.tar.gz \
+            artifacts/coderm-reh-linux-armhf.tar.gz \
+            artifacts/coderm-reh-darwin-arm64.tar.gz \
+            artifacts/coderm-reh-darwin-x64.tar.gz
 
-  # If any downstream job fails, remove the draft release and its tag to
-  # keep the Releases page clean. Only runs when the preflight did not skip.
+  # If any downstream job (build, build-reh, or create-release) fails, remove
+  # the draft release and its tag to keep the Releases page clean. Only runs
+  # when the preflight did not skip (i.e. this run actually attempted a release).
   cleanup-on-failure:
     name: Cleanup on failure
-    needs: [preflight, build, create-release]
+    needs: [preflight, build, build-reh, create-release]
     if: failure() && needs.preflight.outputs.skip != 'true'
     runs-on: ubuntu-latest
     env:
