@@ -270,7 +270,8 @@ function createGitIndexVinyls(paths: string[]): Promise<VinylFile[]> {
 					{ maxBuffer: Math.max(stat.size * 2, 1024 * 1024), encoding: 'buffer' },
 					(err, out) => {
 						if (err) {
-							return e(err);
+							// File exists on disk but not in the index (e.g., git rm --cached)
+							return c(null);
 						}
 
 						c(new VinylFile({
