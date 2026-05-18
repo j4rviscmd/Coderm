@@ -5,12 +5,14 @@
 
 import * as electron from 'electron';
 import { spawn } from 'child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
-import { CancellationToken } from '../../../base/common/cancellation.js';
-import { memoize } from '../../../base/common/decorators.js';
-import * as path from '../../../base/common/path.js';
+import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { Delayer } from '../../../base/common/async.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
+import { CancellationToken } from '../../../base/common/cancellation.js';
+import { memoize } from '../../../base/common/decorators.js';
+import { hash } from '../../../base/common/hash.js';
+import * as path from '../../../base/common/path.js';
+import { transform } from '../../../base/common/stream.js';
 import { URI } from '../../../base/common/uri.js';
 import { IConfigurationService } from '../../configuration/common/configuration.js';
 import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
@@ -25,8 +27,6 @@ import { ITelemetryService } from '../../telemetry/common/telemetry.js';
 import { AvailableForDownload, IUpdate, State, StateType, UpdateType } from '../common/update.js';
 import { AbstractUpdateService, IUpdateURLOptions, UpdateErrorClassification } from './abstractUpdateService.js';
 import { checkForGitHubReleaseUpdate } from './codermGitHubReleases.js';
-import { transform } from '../../../base/common/stream.js';
-import { hash } from '../../../base/common/hash.js';
 
 /**
  * macOS update service for Coderm.
@@ -103,10 +103,26 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	/**
 	 * Performs platform-specific initialisation for the Darwin update service.
 	 * Logs the use of the GitHub Releases API and delegates to the base class.
+	 *
+	 * TODO(dev-only): temporarily bypasses the isBuilt check so that the
+	 * update flow can be tested from a dev build. Remove before release.
 	 */
 	protected override async initialize(): Promise<void> {
 		this.logService.info('coderm-update#initialize - using GitHub Releases API');
-		await super.initialize();
+
+		const isDev = !this.environmentMainService.isBuilt;
+		if (isDev) {
+			this.logService.info('coderm-update#initialize - dev mode: temporarily bypassing isBuilt check');
+			Object.defineProperty(this.environmentMainService, 'isBuilt', { value: true, configurable: true });
+		}
+
+		try {
+			await super.initialize();
+		} finally {
+			if (isDev) {
+				Object.defineProperty(this.environmentMainService, 'isBuilt', { value: false, configurable: true });
+			}
+		}
 	}
 
 	/**
@@ -156,7 +172,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 				this.logService.info(`coderm-update#doCheckForUpdates - update available: ${update.productVersion}`);
 				this.setState(State.AvailableForDownload(update));
 			}
-		}).then(undefined, err => {
+		}).catch(err => {
 			this.telemetryService.publicLog2<{ messageHash: string }, UpdateErrorClassification>('update:error', { messageHash: String(hash(String(err))) });
 			this.logService.error('coderm-update#doCheckForUpdates - error', err);
 			const message: string | undefined = explicit ? (err.message || err) : undefined;
@@ -246,7 +262,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	 *   if mounting or extraction failed.
 	 */
 	private async extractAppFromDmg(dmgPath: string): Promise<string | undefined> {
-		const mountOutput = await this.runCommand('hdiutil', ['attach', '-nobrowse', '-quiet', dmgPath]);
+		const mountOutput = await this.runCommand('hdiutil', ['attach', '-nobrowse', dmgPath]);
 		const mountPoint = mountOutput.split('\n').find(l => l.includes('/Volumes/'))?.trim().split(/\s+/).pop();
 		if (!mountPoint) {
 			this.logService.error('coderm-update#extractAppFromDmg - could not find mount point');
@@ -264,9 +280,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 			const sourceApp = path.join(mountPoint, appName);
 			const stagedApp = path.join(this.stagingDir, appName);
 
-			if (existsSync(stagedApp)) {
-				rmSync(stagedApp, { recursive: true, force: true });
-			}
+			rmSync(stagedApp, { recursive: true, force: true });
 
 			await this.runCommand('cp', ['-R', sourceApp, stagedApp]);
 
