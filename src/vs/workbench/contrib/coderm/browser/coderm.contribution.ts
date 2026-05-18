@@ -14,4 +14,5 @@ import './cursorAutoHide.js';
 import './devTitlePrefix.js';
 import './editorGroupIndex.js';
 import './preventNewGroupOnFocus.js';
+import './quickOpenIncludeTerminals.js';
 import './resizePaneActions.js';
