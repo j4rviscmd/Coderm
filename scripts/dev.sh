@@ -8,9 +8,9 @@
 #
 # Behaviour:
 #   1. Resolves the project root from the script location.
-#   2. Runs a full compilation (`npm run compile`) synchronously.
-#   3. Starts `npm run watch` as a background process for incremental builds.
-#   4. Launches Coderm via scripts/code.sh.
+#   2. Ensures Electron binary is available (auto-downloads on first run).
+#   3. Starts `npm run watch` as a background process (esbuild transpile).
+#   4. Waits for initial transpilation to complete, then launches Coderm.
 #   5. On exit (normal or signal), cleans up the background watch process.
 
 set -euo pipefail
@@ -93,25 +93,63 @@ copy_prod_userdata() {
 }
 copy_prod_userdata
 
-# Full compile to ensure out/ is fully populated before launch.
-echo "[dev] Running compilation..."
-npm run compile
-echo "[dev] Compilation complete."
+# Ensure Electron binary is downloaded (auto-detect and download on first run)
+ELECTRON_PATH="$ROOT/.build/electron/electron"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+	ELECTRON_PATH="$ROOT/.build/electron/Electron.app/Contents/MacOS/Electron"
+fi
+if [[ ! -f "$ELECTRON_PATH" ]]; then
+	echo "[dev] Electron not found. Downloading..."
+	npm run electron
+	if [[ $? -ne 0 ]]; then exit 1; fi
+	echo "[dev] Electron download complete."
+fi
 
-# Start watch in background for incremental builds during development.
+# Start watch in background with output to log file for initial transpile detection
+WATCH_LOG="/tmp/coderm-watch.log"
+rm -f "$WATCH_LOG"
 echo "[dev] Starting watch in background..."
-npm run watch &
+npm run watch > "$WATCH_LOG" 2>&1 &
 WATCH_PID=$!
 
 # Brief pause followed by a liveness check to detect immediate startup failures
-# (e.g. syntax error in build scripts) before launching the application.
 sleep 1
 if ! kill -0 "$WATCH_PID" 2>/dev/null; then
 	echo "[dev] ERROR: watch process failed to start." >&2
 	exit 1
 fi
 
-# Launch app (forwards all arguments to code.sh)
+# Wait for initial esbuild transpile to complete
+echo "[dev] Waiting for initial transpile..."
+TIMEOUT=120  # 2 minutes max
+START_TIME=$(date +%s)
+READY=false
+while [ "$READY" = false ]; do
+	if [ -f "$WATCH_LOG" ]; then
+		if grep -q "Finished transpilation with 0 errors" "$WATCH_LOG" 2>/dev/null; then
+			READY=true
+		elif grep -q "Finished transpilation with [1-9]" "$WATCH_LOG" 2>/dev/null; then
+			echo "[dev] ERROR: Transpilation completed with errors." >&2
+			cat "$WATCH_LOG" >&2
+			WATCH_PID=""
+			exit 1
+		fi
+	fi
+	if [ "$READY" = false ]; then
+		CURRENT_TIME=$(date +%s)
+		ELAPSED=$((CURRENT_TIME - START_TIME))
+		if [ $ELAPSED -gt $TIMEOUT ]; then
+			echo "[dev] ERROR: Timeout waiting for initial transpile." >&2
+			kill "$WATCH_PID" 2>/dev/null || true
+			WATCH_PID=""
+			exit 1
+		fi
+		sleep 0.5
+	fi
+done
+echo "[dev] Transpilation complete."
+
+# Launch app with VSCODE_SKIP_PRELAUNCH to skip redundant Electron download/compile checks
 echo "[dev] Launching Coderm..."
 echo ""
-./scripts/code.sh "$@"
+VSCODE_SKIP_PRELAUNCH=1 ./scripts/code.sh "$@"
