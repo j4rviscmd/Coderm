@@ -3,10 +3,11 @@
     Coderm one-command development launcher for Windows PowerShell.
 
 .DESCRIPTION
-    Prepares and launches Coderm in development mode. The script performs a
-    full compilation, starts an incremental watch build in the background,
-    then launches the Coderm Electron application. The background watch
-    process is cleaned up automatically when the application exits or on error.
+    Prepares and launches Coderm in development mode. The script ensures the
+    Electron binary is available, starts an incremental esbuild watch build in
+    the background, waits for the initial transpilation to complete, then
+    launches the Coderm Electron application. The background watch process is
+    cleaned up automatically when the application exits or on error.
 
     All arguments passed to this script are forwarded to scripts/code.ps1
     (the Electron launcher).
@@ -65,27 +66,73 @@ function Copy-ProdUserData {
 Copy-ProdUserData
 
 try {
-	# Full compile to ensure out/ is fully populated before launch.
-	Write-Host '[dev] Running compilation...' -ForegroundColor Cyan
-	npm run compile
-	if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-	Write-Host '[dev] Compilation complete.' -ForegroundColor Cyan
+    # Ensure Electron binary is downloaded (auto-detect and download on first run)
+    $electronPath = Join-Path $Root '.build\electron\electron.exe'
+    if (-not (Test-Path $electronPath)) {
+        Write-Host '[dev] Electron not found. Downloading...' -ForegroundColor Cyan
+        npm run electron
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        Write-Host '[dev] Electron download complete.' -ForegroundColor Cyan
+    }
 
-	# Start watch in background for incremental builds during development.
-	Write-Host '[dev] Starting watch in background...' -ForegroundColor Cyan
-	$watchProcess = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'npm', 'run', 'watch' -PassThru -NoNewWindow
+    # Start watch in background with output to log file for initial transpile detection
+    $watchLog = Join-Path $env:TEMP 'coderm-watch.log'
+    if (Test-Path $watchLog) { Remove-Item $watchLog -Force }
+    Write-Host '[dev] Starting watch in background...' -ForegroundColor Cyan
+    $watchArgs = "/c npm run watch > `"$watchLog`" 2>&1"
+    $watchProcess = Start-Process -FilePath 'cmd.exe' -ArgumentList $watchArgs -PassThru -WindowStyle Hidden
 
-	# Launch app (forwards all arguments to code.ps1)
-	Write-Host '[dev] Launching Coderm...' -ForegroundColor Cyan
-	Write-Host ''
-	& (Join-Path $Root 'scripts/code.ps1') @args
+    # Brief pause to detect immediate startup failures
+    Start-Sleep -Seconds 1
+    if ($watchProcess.HasExited) {
+        Write-Host '[dev] ERROR: watch process failed to start.' -ForegroundColor Red
+        exit 1
+    }
+
+    # Wait for initial esbuild transpile to complete
+    Write-Host '[dev] Waiting for initial transpile...' -ForegroundColor Cyan
+    $timeout = 120  # 2 minutes max
+    $startTime = Get-Date
+    $ready = $false
+    while (-not $ready) {
+        if (Test-Path $watchLog) {
+            $content = Get-Content $watchLog -Raw -ErrorAction SilentlyContinue
+            if ($content -match 'Finished transpilation with 0 errors') {
+                $ready = $true
+            } elseif ($content -match 'Finished transpilation with [1-9]\d* errors') {
+                Write-Host '[dev] ERROR: Transpilation completed with errors.' -ForegroundColor Red
+                Get-Content $watchLog -ErrorAction SilentlyContinue | Write-Host
+                exit 1
+            }
+        }
+        if (-not $ready) {
+            if (((Get-Date) - $startTime).TotalSeconds -gt $timeout) {
+                Write-Host '[dev] ERROR: Timeout waiting for initial transpile.' -ForegroundColor Red
+                exit 1
+            }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    Write-Host '[dev] Transpilation complete.' -ForegroundColor Cyan
+
+    # Launch app with VSCODE_SKIP_PRELAUNCH to skip redundant Electron download/compile checks
+    Write-Host '[dev] Launching Coderm...' -ForegroundColor Cyan
+    Write-Host ''
+    $oldSkipPrelaunch = $env:VSCODE_SKIP_PRELAUNCH
+    $env:VSCODE_SKIP_PRELAUNCH = '1'
+    try {
+        & (Join-Path $Root 'scripts/code.ps1') @args
+    } finally {
+        $env:VSCODE_SKIP_PRELAUNCH = $oldSkipPrelaunch
+    }
 }
 finally {
-	# Terminate the background watch process on exit or error.
-	if ($watchProcess -and -not $watchProcess.HasExited) {
-		Write-Host ''
-		Write-Host "[dev] Stopping watch (PID: $($watchProcess.Id))..." -ForegroundColor Cyan
-		Stop-Process -Id $watchProcess.Id -Force -ErrorAction SilentlyContinue
-		Write-Host '[dev] Stopped.' -ForegroundColor Cyan
-	}
+    # Terminate the background watch process tree on exit or error.
+    if ($watchProcess -and -not $watchProcess.HasExited) {
+        Write-Host ''
+        Write-Host "[dev] Stopping watch (PID: $($watchProcess.Id))..." -ForegroundColor Cyan
+        Stop-Process -Id $watchProcess.Id -Force -ErrorAction SilentlyContinue
+        taskkill /PID $watchProcess.Id /T /F 2>$null
+        Write-Host '[dev] Stopped.' -ForegroundColor Cyan
+    }
 }
