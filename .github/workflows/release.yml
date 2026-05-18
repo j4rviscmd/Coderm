@@ -334,15 +334,25 @@ jobs:
             arm64) DOCKER_PLATFORM="linux/arm64" ;;
             *)     DOCKER_PLATFORM="linux/arm/v7" ;;
           esac
-          REH_DIR="$(pwd)/../vscode-reh-linux-${{ matrix.arch }}"
+          SRC_DIR="$(pwd)"
+          REH_DIR="${SRC_DIR}/../vscode-reh-linux-${{ matrix.arch }}"
           echo "Rebuilding native modules for ${{ matrix.arch }} via Docker (${DOCKER_PLATFORM})"
           cd "${REH_DIR}"
+          # The REH build strips dependencies from package.json, but npm install
+          # needs them to resolve the full dependency tree for ARM. Temporarily
+          # restore the original package.json (with dependencies) and swap back
+          # after install so the tarball ships the build's package.json.
+          cp package.json package.json.bak
+          cp "${SRC_DIR}/remote/package.json" package.json
+          trap 'mv package.json.bak package.json' EXIT
           rm -rf node_modules
           docker run --rm --platform "${DOCKER_PLATFORM}" \
             -v "$(pwd)/..":/build \
             -w "/build/vscode-reh-linux-${{ matrix.arch }}" \
             "node:${NODE_MAJOR}" \
             sh -c "npm install --omit=dev && npm rebuild"
+          mv package.json.bak package.json
+          trap - EXIT
 
       - name: Package REH tarball
         shell: bash
