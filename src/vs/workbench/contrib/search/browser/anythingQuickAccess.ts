@@ -58,6 +58,7 @@ import { ASK_QUICK_QUESTION_ACTION_ID } from '../../chat/browser/actions/chatQui
 import { IChatWidgetService, IQuickChatService } from '../../chat/browser/chat.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { ICustomEditorLabelService } from '../../../services/editor/common/customEditorLabelService.js';
+import { CodermQuickOpenIncludeTerminalsSetting } from '../../coderm/browser/quickOpenIncludeTerminals.js';
 
 interface IAnythingQuickPickItem extends IPickerQuickAccessItem, IQuickPickItemWithResource { }
 
@@ -216,7 +217,8 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 			includeSymbols: searchConfig?.quickOpen?.includeSymbols,
 			includeHistory: searchConfig?.quickOpen?.includeHistory ?? true,
 			historyFilterSortOrder: searchConfig?.quickOpen?.history?.filterSortOrder,
-			preserveInput: quickAccessConfig?.preserveInput
+			preserveInput: quickAccessConfig?.preserveInput,
+			includeTerminals: this.configurationService.getValue<boolean>(CodermQuickOpenIncludeTerminalsSetting),
 		};
 	}
 
@@ -504,7 +506,9 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 
 		// Just return all history entries if not searching
 		if (!query.normalized) {
-			return this.historyService.getHistory().map(editor => this.createAnythingPick(editor, configuration));
+			return this.historyService.getHistory()
+				.filter(editor => configuration.includeTerminals || editor.resource?.scheme !== Schemas.vscodeTerminal)
+				.map(editor => this.createAnythingPick(editor, configuration));
 		}
 
 		if (!this.configuration.includeHistory) {
@@ -515,6 +519,9 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 		const editorHistoryScorerAccessor = query.containsPathSeparator ? quickPickItemScorerAccessor : this.labelOnlyEditorHistoryPickAccessor; // Only match on label of the editor unless the search includes path separators
 		const editorHistoryPicks: Array<IAnythingQuickPickItem> = [];
 		for (const editor of this.historyService.getHistory()) {
+			if (!configuration.includeTerminals && editor.resource?.scheme === Schemas.vscodeTerminal) {
+				continue;
+			}
 			const resource = editor.resource;
 			if (!resource) {
 				continue;
