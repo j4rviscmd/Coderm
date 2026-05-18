@@ -105,6 +105,78 @@ if [[ ! -f "$ELECTRON_PATH" ]]; then
 	echo "[dev] Electron download complete."
 fi
 
+##
+# ensure_builtin_extensions - Download built-in extensions from GitHub Releases
+# that are not available on Microsoft Marketplace.
+#
+# Reads product.json builtInExtensions entries with a "repo" field and downloads
+# them from GitHub Releases if not already present (or version mismatched).
+##
+ensure_builtin_extensions() {
+	local product_json="$ROOT/product.json"
+
+	# Use node to parse product.json and output extension info
+	# Format: name|version|repo (one per line, only extensions with repo field)
+	local ext_info
+	ext_info=$(node -e "
+		const p = require('$product_json');
+		(p.builtInExtensions || []).forEach(e => {
+			if (e.repo) console.log(e.name + '|' + e.version + '|' + e.repo);
+		});
+	")
+
+	if [ -z "$ext_info" ]; then
+		return
+	fi
+
+	while IFS='|' read -r name version repo; do
+		local ext_dir="$ROOT/.build/builtInExtensions/$name"
+		local pkg_json="$ext_dir/package.json"
+
+		# Check if already up to date
+		if [ -f "$pkg_json" ]; then
+			local disk_version
+			disk_version=$(node -p "require('$pkg_json').version" 2>/dev/null || echo "")
+			if [ "$disk_version" = "$version" ]; then
+				echo "[dev] Built-in extension $name@$version up to date."
+				continue
+			fi
+		fi
+
+		# Derive download URL from repo field
+		# e.g. repo: "https://github.com/jeanp413/open-remote-ssh" -> basename: "open-remote-ssh"
+		local repo_url="${repo%/}"
+		local repo_basename="${repo_url##*/}"
+		local vsix_url="$repo_url/releases/download/v$version/$repo_basename-$version.vsix"
+
+		echo "[dev] Downloading built-in extension: $name@$version..."
+
+		# Download VSIX
+		local temp_vsix="/tmp/$repo_basename-$version.vsix"
+		if ! curl -sL "$vsix_url" -o "$temp_vsix"; then
+			echo "[dev] WARNING: Failed to download $name" >&2
+			continue
+		fi
+
+		# Extract VSIX (it's a ZIP file with extension/ prefix)
+		local temp_extract="/tmp/$repo_basename-extract"
+		rm -rf "$temp_extract"
+		unzip -q -o "$temp_vsix" -d "$temp_extract" 'extension/*'
+
+		# Copy extension contents to target directory
+		rm -rf "$ext_dir"
+		mkdir -p "$ext_dir"
+		cp -r "$temp_extract/extension/"* "$ext_dir/"
+
+		# Cleanup
+		rm -f "$temp_vsix"
+		rm -rf "$temp_extract"
+
+		echo "[dev] Installed $name@$version."
+	done <<< "$ext_info"
+}
+ensure_builtin_extensions
+
 # Start watch in background with output to log file for initial transpile detection
 WATCH_LOG="/tmp/coderm-watch.log"
 rm -f "$WATCH_LOG"
