@@ -8,9 +8,6 @@ import { spawn } from 'child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { CancellationToken } from '../../../base/common/cancellation.js';
 import { memoize } from '../../../base/common/decorators.js';
-import { DisposableStore } from '../../../base/common/lifecycle.js';
-import { Event } from '../../../base/common/event.js';
-import { isMacintosh } from '../../../base/common/platform.js';
 import * as path from '../../../base/common/path.js';
 import { Delayer } from '../../../base/common/async.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
@@ -26,7 +23,7 @@ import { IRequestService } from '../../request/common/request.js';
 import { IApplicationStorageMainService } from '../../storage/electron-main/storageMainService.js';
 import { ITelemetryService } from '../../telemetry/common/telemetry.js';
 import { AvailableForDownload, IUpdate, State, StateType, UpdateType } from '../common/update.js';
-import { AbstractUpdateService, getUpdateRequestHeaders, IUpdateURLOptions, UpdateErrorClassification } from './abstractUpdateService.js';
+import { AbstractUpdateService, IUpdateURLOptions, UpdateErrorClassification } from './abstractUpdateService.js';
 import { checkForGitHubReleaseUpdate } from './codermGitHubReleases.js';
 import { transform } from '../../../base/common/stream.js';
 import { hash } from '../../../base/common/hash.js';
@@ -34,21 +31,25 @@ import { hash } from '../../../base/common/hash.js';
 /**
  * macOS update service for Coderm.
  *
- * Attempts to use Electron's autoUpdater (Squirrel.Mac) first.
- * If the app is unsigned (ad-hoc), autoUpdater.setFeedURL() will throw,
- * and the service falls back to a custom DMG download & install flow:
+ * Uses GitHub Releases API for update checks and a custom DMG download & install flow:
  *
- *  1. Download DMG via HTTP
- *  2. Mount with hdiutil
- *  3. Copy .app to staging directory
- *  4. On quit: replace current .app bundle and relaunch
+ *  1. Check for updates via GitHub Releases API
+ *  2. Download DMG via HTTP
+ *  3. Mount with hdiutil
+ *  4. Copy .app to staging directory
+ *  5. On quit: replace current .app bundle and relaunch
  */
 export class CodermDarwinUpdateService extends AbstractUpdateService implements IRelaunchHandler {
 
-	private readonly disposables = new DisposableStore();
-	private useAutoUpdater = true;
+	/** Holds the staged application bundle path and name when an update is ready to apply. */
 	private pendingUpdate: { stagingPath: string; appName: string } | undefined;
 
+	/**
+	 * Lazily-created directory used to store downloaded DMG files and
+	 * extracted `.app` bundles while an update is in progress.
+	 *
+	 * Located under `<userDataPath>/coderm-update-staging`.
+	 */
 	@memoize
 	private get stagingDir(): string {
 		const dir = path.join(this.environmentMainService.userDataPath, 'coderm-update-staging');
@@ -73,6 +74,17 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		lifecycleMainService.setRelaunchHandler(this);
 	}
 
+	/**
+	 * Intercepts the application relaunch to apply a pending DMG-based update.
+	 *
+	 * When the update state is `Ready` and a staged update exists, this handler
+	 * spawns a background shell script that waits for the current process to exit,
+	 * replaces the application bundle, and re-launches it.
+	 *
+	 * @param options - Relaunch options. If `addArgs` or `removeArgs` are provided
+	 *   the handler delegates back to the default relaunch behaviour.
+	 * @returns `true` if the relaunch was handled (update applied), `false` otherwise.
+	 */
 	handleRelaunch(options?: IRelaunchOptions): boolean {
 		if (options?.addArgs || options?.removeArgs) {
 			return false;
@@ -88,73 +100,41 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		return true;
 	}
 
+	/**
+	 * Performs platform-specific initialisation for the Darwin update service.
+	 * Logs the use of the GitHub Releases API and delegates to the base class.
+	 */
 	protected override async initialize(): Promise<void> {
-		// Probe whether autoUpdater is usable (app is code-signed)
-		if (isMacintosh) {
-			try {
-				const headers = getUpdateRequestHeaders(this.productService.version);
-				electron.autoUpdater.setFeedURL({ url: 'https://localhost', headers });
-				this.useAutoUpdater = true;
-				this.logService.info('coderm-update#initialize - autoUpdater available (app is signed)');
-			} catch {
-				this.useAutoUpdater = false;
-				this.logService.info('coderm-update#initialize - autoUpdater unavailable (app is unsigned), using DMG fallback');
-			}
-		}
-
+		this.logService.info('coderm-update#initialize - using GitHub Releases API');
 		await super.initialize();
-
-		if (this.useAutoUpdater) {
-			const onError = Event.fromNodeEventEmitter<string>(electron.autoUpdater, 'error', (_, message) => message);
-			const onUpdateDownloaded = Event.fromNodeEventEmitter<IUpdate>(electron.autoUpdater, 'update-downloaded', (_, version: string, productVersion: string, releaseDate: Date | number) => ({
-				version,
-				productVersion,
-				timestamp: releaseDate instanceof Date ? releaseDate.getTime() || undefined : releaseDate
-			}));
-
-			this.disposables.add(onError(msg => this.onAutoUpdaterError(msg)));
-			this.disposables.add(onUpdateDownloaded(update => this.onAutoUpdaterDownloaded(update)));
-		}
 	}
 
-	private onAutoUpdaterError(err: string): void {
-		this.telemetryService.publicLog2<{ messageHash: string }, UpdateErrorClassification>('update:error', { messageHash: String(hash(String(err))) });
-		this.logService.error('coderm-update error:', err);
-
-		const message = (this.state.type === StateType.CheckingForUpdates && this.state.explicit) ? err : undefined;
-		this.setState(State.Idle(UpdateType.Archive, message));
-	}
-
-	private onAutoUpdaterDownloaded(update: IUpdate): void {
-		if (this.state.type !== StateType.Downloading) {
-			return;
-		}
-
-		this.logService.info(`coderm-update: update downloaded via autoUpdater: ${JSON.stringify(update)}`);
-		this.setState(State.Downloaded(update, this.state.explicit, this._overwrite));
-		this.setState(State.Ready(update, this.state.explicit, this._overwrite));
-	}
-
-	protected buildUpdateFeedUrl(quality: string, commit: string, _options?: IUpdateURLOptions): string | undefined {
-		if (this.useAutoUpdater) {
-			// NOTE: This path is unreachable for unsigned (ad-hoc) builds.
-			// If code signing is added in the future, replace with a Coderm-specific update server.
-			const assetID = this.productService.darwinUniversalAssetId ?? (process.arch === 'x64' ? 'darwin' : 'darwin-arm64');
-			const url = `https://update.code.visualstudio.com/api/update/${assetID}/${quality}/${commit}`;
-			const headers = getUpdateRequestHeaders(this.productService.version);
-			try {
-				electron.autoUpdater.setFeedURL({ url, headers });
-			} catch {
-				this.logService.error('coderm-update#buildUpdateFeedUrl - failed to set autoUpdater feed URL');
-				return undefined;
-			}
-			return url;
-		}
-
-		// DMG fallback: return placeholder so AbstractUpdateService.initialize() passes validation
+	/**
+	 * Returns a placeholder update feed URL so that the base class validation passes.
+	 * Actual update checks are performed via the GitHub Releases API in
+	 * {@link CodermDarwinUpdateService.doCheckForUpdates}.
+	 *
+	 * @param _quality - Unused quality channel identifier.
+	 * @param _commit - Unused current commit hash.
+	 * @param _options - Unused URL-building options.
+	 * @returns A URL derived from the product's `updateUrl` with `/releases/latest` appended.
+	 */
+	protected buildUpdateFeedUrl(_quality: string, _commit: string, _options?: IUpdateURLOptions): string | undefined {
+		// Return placeholder so AbstractUpdateService.initialize() passes validation
 		return `${this.productService.updateUrl}/releases/latest`;
 	}
 
+	/**
+	 * Checks for a newer release via the GitHub Releases API.
+	 *
+	 * On success the state transitions to either `AvailableForDownload` (update
+	 * found) or `Idle` (already up-to-date).  On failure the state is set to
+	 * `Idle` with the error message (only for user-initiated checks) and an
+	 * error telemetry event is logged.
+	 *
+	 * @param explicit - Whether this check was triggered by the user.
+	 * @param _pendingCommit - Unused pending commit hash.
+	 */
 	protected doCheckForUpdates(explicit: boolean, _pendingCommit?: string): void {
 		if (!this.quality) {
 			return;
@@ -162,17 +142,6 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 
 		this.setState(State.CheckingForUpdates(explicit));
 
-		if (this.useAutoUpdater) {
-			if (!explicit && this.meteredConnectionService.isConnectionMetered) {
-				this.logService.info('coderm-update#doCheckForUpdates - skipping autoUpdater on metered connection');
-				this.setState(State.Idle(UpdateType.Archive, undefined, explicit || undefined));
-				return;
-			}
-			electron.autoUpdater.checkForUpdates();
-			return;
-		}
-
-		// Unsigned fallback: use GitHub Releases API
 		checkForGitHubReleaseUpdate(
 			this.requestService,
 			this.productService,
@@ -195,15 +164,14 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		});
 	}
 
+	/**
+	 * Downloads the DMG for the available update, mounts it, extracts the
+	 * `.app` bundle to the staging directory, and transitions to the `Ready`
+	 * state so the update can be applied on the next relaunch.
+	 *
+	 * @param state - The current `AvailableForDownload` state containing the update metadata.
+	 */
 	protected override async doDownloadUpdate(state: AvailableForDownload): Promise<void> {
-		if (this.useAutoUpdater) {
-			this.buildUpdateFeedUrl(this.quality!, state.update.version, { internalOrg: this.getInternalOrg() });
-			this.setState(State.CheckingForUpdates(true));
-			electron.autoUpdater.checkForUpdates();
-			return;
-		}
-
-		// DMG fallback: download and extract
 		const update = state.update;
 		const startTime = Date.now();
 		this.setState(State.Downloading(update, true, false, 0, undefined, startTime));
@@ -229,6 +197,18 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		}
 	}
 
+	/**
+	 * Downloads `url` to `destPath` while reporting progress through the state machine.
+	 *
+	 * A transforming stream is used so that each chunk increments the
+	 * downloaded-byte counter and updates the `Downloading` state (throttled
+	 * to at most once every 500 ms).
+	 *
+	 * @param url - The remote URL of the DMG file.
+	 * @param destPath - Absolute local path where the file should be written.
+	 * @param update - The update object used to construct progress state.
+	 * @param startTime - Timestamp (ms) when the download started, used for progress display.
+	 */
 	private async downloadFile(url: string, destPath: string, update: IUpdate, startTime: number): Promise<void> {
 		const context = await this.requestService.request({ url, callSite: 'codermUpdateService.darwin.downloadDmg' }, CancellationToken.None);
 		const contentLengthHeader = context.res.headers['content-length'];
@@ -254,6 +234,17 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 			.finally(() => progressDelayer.dispose());
 	}
 
+	/**
+	 * Mounts a DMG, copies the enclosed `.app` bundle to the staging
+	 * directory, and unmounts the volume.
+	 *
+	 * Security: the `.app` entry name is validated against `^[\w\s.\-]+\.app$`
+	 * before being used in any file operation to mitigate path-traversal risks.
+	 *
+	 * @param dmgPath - Absolute path to the downloaded DMG file.
+	 * @returns The absolute path of the staged `.app` bundle, or `undefined`
+	 *   if mounting or extraction failed.
+	 */
 	private async extractAppFromDmg(dmgPath: string): Promise<string | undefined> {
 		const mountOutput = await this.runCommand('hdiutil', ['attach', '-nobrowse', '-quiet', dmgPath]);
 		const mountPoint = mountOutput.split('\n').find(l => l.includes('/Volumes/'))?.trim().split(/\s+/).pop();
@@ -288,6 +279,15 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		}
 	}
 
+	/**
+	 * Writes a shell script to disk and spawns it as a detached process.
+	 *
+	 * The script waits for all Coderm processes to exit, replaces the
+	 * current `.app` bundle with the staged one, re-launches the
+	 * application, and cleans up the script and DMG files.
+	 *
+	 * Must only be called when {@link pendingUpdate} is set.
+	 */
 	private applyDmgUpdateOnQuit(): void {
 		if (!this.pendingUpdate) {
 			return;
@@ -322,23 +322,36 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		}).unref();
 	}
 
+	/**
+	 * Triggers the DMG update application when the user chooses "Quit and Install".
+	 * Delegates to {@link applyDmgUpdateOnQuit} which spawns a background script.
+	 */
 	protected override doQuitAndInstall(): void {
-		if (this.useAutoUpdater) {
-			this.logService.trace('coderm-update#quitAndInstall(): using autoUpdater');
-			electron.autoUpdater.quitAndInstall();
-			return;
-		}
-
 		if (this.pendingUpdate) {
 			this.logService.trace('coderm-update#quitAndInstall(): applying DMG update');
 			this.applyDmgUpdateOnQuit();
 		}
 	}
 
+	/**
+	 * Returns the archive update type used by the base class for state tracking.
+	 * On macOS the DMG-based flow is classified as an archive-style update.
+	 *
+	 * @returns Always {@link UpdateType.Archive}.
+	 */
 	protected override getUpdateType(): UpdateType {
 		return UpdateType.Archive;
 	}
 
+	/**
+	 * Spawns a child process and collects its stdout output.
+	 *
+	 * @param command - The executable to run (e.g. `hdiutil`, `cp`).
+	 * @param args - Arguments passed to the command.
+	 * @returns The combined stdout output on success (exit code 0).
+	 * @throws {Error} If the process exits with a non-zero code, including
+	 *   the command, exit code, and captured stderr in the message.
+	 */
 	private runCommand(command: string, args: string[]): Promise<string> {
 		return new Promise((resolve, reject) => {
 			const child = spawn(command, args);
@@ -355,9 +368,5 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 			});
 			child.once('error', reject);
 		});
-	}
-
-	dispose(): void {
-		this.disposables.dispose();
 	}
 }
