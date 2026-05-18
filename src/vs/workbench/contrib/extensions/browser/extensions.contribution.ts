@@ -330,7 +330,7 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
 			'extensions.supportNodeGlobalNavigator': {
 				type: 'boolean',
 				description: localize('extensionsSupportNodeGlobalNavigator', "When enabled, Node.js navigator object is exposed on the global scope."),
-				default: false,
+				default: true,
 			},
 			[ExtensionRequestsTimeoutConfigKey]: {
 				type: 'number',
