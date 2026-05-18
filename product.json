@@ -103,9 +103,9 @@
 			}
 		}
 	],
-	"extensionEnabledApiProposals": {
-		"jeanp413.open-remote-ssh": ["resolvers", "contribViewsRemote"]
-	},
+	"extensionAllowedProposedApi": [
+		"jeanp413.open-remote-ssh"
+	],
 	"defaultChatAgent": {
 		"extensionId": "GitHub.copilot",
 		"chatExtensionId": "GitHub.copilot-chat",

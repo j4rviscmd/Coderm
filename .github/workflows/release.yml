@@ -157,7 +157,7 @@ jobs:
           EXT_DIR=".build/builtInExtensions/jeanp413.open-remote-ssh"
           mkdir -p "$EXT_DIR"
           curl -sL "https://github.com/jeanp413/open-remote-ssh/releases/download/v0.1.2/open-remote-ssh-0.1.2.vsix" -o /tmp/open-remote-ssh.vsix
-          unzip -q -o /tmp/open-remote-ssh.vsix -d /tmp/open-remote-ssh-ext
+          unzip -q -o /tmp/open-remote-ssh.vsix -d /tmp/open-remote-ssh-ext 'extension/*'
           cp -r /tmp/open-remote-ssh-ext/extension/* "$EXT_DIR/"
           rm -rf /tmp/open-remote-ssh-ext /tmp/open-remote-ssh.vsix
           echo "Pre-downloaded open-remote-ssh $(node -p "require('./$EXT_DIR/package.json').version")"
@@ -300,7 +300,7 @@ jobs:
           EXT_DIR=".build/builtInExtensions/jeanp413.open-remote-ssh"
           mkdir -p "$EXT_DIR"
           curl -sL "https://github.com/jeanp413/open-remote-ssh/releases/download/v0.1.2/open-remote-ssh-0.1.2.vsix" -o /tmp/open-remote-ssh.vsix
-          unzip -q -o /tmp/open-remote-ssh.vsix -d /tmp/open-remote-ssh-ext
+          unzip -q -o /tmp/open-remote-ssh.vsix -d /tmp/open-remote-ssh-ext 'extension/*'
           cp -r /tmp/open-remote-ssh-ext/extension/* "$EXT_DIR/"
           rm -rf /tmp/open-remote-ssh-ext /tmp/open-remote-ssh.vsix
           echo "Pre-downloaded open-remote-ssh $(node -p "require('./$EXT_DIR/package.json').version")"
