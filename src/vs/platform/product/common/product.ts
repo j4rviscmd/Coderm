@@ -34,7 +34,7 @@ else if (globalThis._VSCODE_PRODUCT_JSON && globalThis._VSCODE_PACKAGE_JSON) {
 		Object.assign(product, {
 			nameShort: `${product.nameShort} Dev`,
 			nameLong: `${product.nameLong} Dev`,
-			dataFolderName: product.dataFolderName, // Coderm: shared with production; add -dev suffix if separation is needed
+			dataFolderName: product.dataFolderName ? `${product.dataFolderName}-dev` : undefined, // Coderm: dev suffix for parallel launch
 			serverDataFolderName: product.serverDataFolderName ? `${product.serverDataFolderName}-dev` : undefined
 		});
 	}

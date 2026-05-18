@@ -440,7 +440,8 @@ function getArgvConfigPath(): string {
 
 	const dataFolderName = product.dataFolderName;
 	if (process.env['VSCODE_DEV']) {
-		// Coderm: shared with production; add -dev suffix if separation is needed
+		// Coderm: dev suffix for parallel launch
+		return path.join(os.homedir(), `${dataFolderName}-dev`, 'argv.json');
 	}
 
 	return path.join(os.homedir(), dataFolderName!, 'argv.json');

@@ -32,6 +32,38 @@ Set-Location $Root
 
 $watchProcess = $null
 
+# Copy production user data to dev directory on first launch.
+function Copy-ProdUserData {
+    $prodDir = Join-Path $env:APPDATA 'Coderm'
+    $devDir = Join-Path $env:APPDATA 'Coderm Dev'
+    $prodDataDir = Join-Path $env:USERPROFILE '.coderm'
+    $devDataDir = Join-Path $env:USERPROFILE '.coderm-dev'
+
+    if ((Test-Path $prodDir) -and -not (Test-Path $devDir)) {
+        Write-Host '[dev] Copying production user data to dev directory...' -ForegroundColor Cyan
+        New-Item -ItemType Directory -Path (Join-Path $devDir 'User') -Force | Out-Null
+        foreach ($item in @('settings.json', 'keybindings.json', 'snippets')) {
+            $src = Join-Path "$prodDir\User" $item
+            if (Test-Path $src) {
+                Copy-Item -Path $src -Destination (Join-Path "$devDir\User" $item) -Recurse -Force
+            }
+        }
+    }
+
+    $prodExtDir = Join-Path $prodDataDir 'extensions'
+    $devExtDir = Join-Path $devDataDir 'extensions'
+    if ((Test-Path $prodExtDir) -and -not (Test-Path $devExtDir)) {
+        Write-Host '[dev] Copying production extensions to dev directory...' -ForegroundColor Cyan
+        New-Item -ItemType Directory -Path $devExtDir -Force | Out-Null
+        Get-ChildItem -Path $prodExtDir | Copy-Item -Destination $devExtDir -Recurse -Force
+    }
+
+    if (Test-Path $devDir) {
+        Write-Host "[dev] Done. Dev user data ready at: $devDir" -ForegroundColor Cyan
+    }
+}
+Copy-ProdUserData
+
 try {
 	# Full compile to ensure out/ is fully populated before launch.
 	Write-Host '[dev] Running compilation...' -ForegroundColor Cyan

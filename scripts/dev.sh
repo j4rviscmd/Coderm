@@ -44,6 +44,55 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM HUP
 
+##
+# copy_prod_userdata - Copy production user data to dev directory on first launch.
+##
+copy_prod_userdata() {
+	local prod_dir=""
+	local dev_dir=""
+
+	case "$(uname -s)" in
+		Darwin)
+			prod_dir="$HOME/Library/Application Support/Coderm"
+			dev_dir="$HOME/Library/Application Support/Coderm Dev"
+			;;
+		Linux)
+			local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}"
+			prod_dir="$config_dir/Coderm"
+			dev_dir="$config_dir/Coderm Dev"
+			;;
+		*)
+			return
+			;;
+	esac
+
+	# Data dirs use the same pattern on all supported platforms
+	# (the platform check above returns early for anything else).
+	local prod_data_dir="$HOME/.coderm"
+	local dev_data_dir="$HOME/.coderm-dev"
+
+	if [ -d "$prod_dir" ] && [ ! -d "$dev_dir" ]; then
+		echo "[dev] Copying production user data to dev directory..."
+		mkdir -p "$dev_dir/User"
+		for item in settings.json keybindings.json snippets; do
+			if [ -e "$prod_dir/User/$item" ]; then
+				cp -R "$prod_dir/User/$item" "$dev_dir/User/$item"
+			fi
+		done
+	fi
+
+	if [ -n "$prod_data_dir" ] && [ -d "$prod_data_dir/extensions" ] && [ ! -d "$dev_data_dir/extensions" ]; then
+		echo "[dev] Copying production extensions to dev directory..."
+		mkdir -p "$dev_data_dir/extensions"
+		cp -R "$prod_data_dir/extensions/"* "$dev_data_dir/extensions/" 2>/dev/null || true
+	fi
+
+	if [ -d "$dev_dir" ]; then
+		echo "[dev] Done. Dev user data ready at: $dev_dir"
+	fi
+}
+copy_prod_userdata
+
 # Full compile to ensure out/ is fully populated before launch.
 echo "[dev] Running compilation..."
 npm run compile

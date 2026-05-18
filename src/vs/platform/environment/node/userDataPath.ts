@@ -45,7 +45,7 @@ function doGetUserDataPath(cliArgs: NativeParsedArgs, productName: string): stri
 
 	// 0. Running out of sources has a fixed productName
 	if (process.env['VSCODE_DEV']) {
-		productName = 'Coderm'; // Coderm: shared with production; add -dev suffix if separation is needed
+		productName = 'Coderm Dev'; // Coderm: dev suffix for parallel launch with production
 	}
 
 	// 1. Support portable mode
