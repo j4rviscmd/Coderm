@@ -1,0 +1,85 @@
+# CI workflow: ESLint + compile check on every PR targeting main.
+# ci-gate aggregates all job results into a single required status check.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  eslint:
+    name: ESLint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run eslint
+
+  compile:
+    name: Compile check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/cache@v4
+        id: cache-nm
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (full)
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+          npm ci
+
+      - name: Install sub-directory dependencies
+        if: steps.cache-nm.outputs.cache-hit == 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+          rm -f node_modules/.postinstall-state
+          node --experimental-strip-types build/npm/postinstall.ts
+
+      - run: npm run compile
+
+  # Gate job: aggregates all job results into a single required status check.
+  # Always runs (even when other jobs are skipped), making it safe to use as
+  # a required status check in branch protection.
+  ci-gate:
+    name: CI Gate
+    if: ${{ always() }}
+    needs: [eslint, compile]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check job results
+        run: |
+          results=("${{ needs.eslint.result }}" "${{ needs.compile.result }}")
+          for result in "${results[@]}"; do
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "::error::One or more CI jobs failed or were cancelled."
+              exit 1
+            fi
+          done
+          echo "All CI jobs passed or were skipped."
