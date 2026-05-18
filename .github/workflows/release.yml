@@ -271,6 +271,10 @@ jobs:
           sudo apt-get clean
           df -h
 
+      - name: Install native dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y libkrb5-dev
+
       - name: Set up QEMU
         if: matrix.platform == 'linux' && matrix.arch != 'x64'
         uses: docker/setup-qemu-action@v3
