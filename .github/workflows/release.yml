@@ -214,7 +214,7 @@ jobs:
           path: ${{ matrix.artifact }}
           retention-days: 1
 
-  # Builds the REH (Remote Extension Host) server for 5 platforms.
+  # Builds the REH (Remote Extension Host) server for 4 platforms.
   # Only runs when REH-related code has changed since the previous release
   # (controlled by the preflight job's reh_changed output).
   #
@@ -244,10 +244,6 @@ jobs:
           - target: darwin-arm64
             os: macos-14
             arch: arm64
-            platform: darwin
-          - target: darwin-x64
-            os: macos-13
-            arch: x64
             platform: darwin
     runs-on: ${{ matrix.os }}
     timeout-minutes: 720
@@ -282,6 +278,10 @@ jobs:
       - name: Create swap
         if: runner.os == 'Linux'
         run: |
+          if swapon --show=NAME --noheadings | grep -q '/swapfile'; then
+            sudo swapoff /swapfile
+          fi
+          sudo rm -f /swapfile
           sudo fallocate -l 8G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
@@ -400,7 +400,7 @@ jobs:
             exit 1
           fi
           echo "Copying REH assets from ${PREV_TAG}"
-          for target in linux-x64 linux-arm64 linux-armhf darwin-arm64 darwin-x64; do
+          for target in linux-x64 linux-arm64 linux-armhf darwin-arm64; do
             echo "Downloading coderm-reh-${target}.tar.gz from ${PREV_TAG}"
             gh release download "${PREV_TAG}" \
               --pattern "coderm-reh-${target}.tar.gz" \
@@ -413,8 +413,7 @@ jobs:
           MISSING=""
           for f in Coderm-arm64.dmg CodermSetup-x64.exe \
                    coderm-reh-linux-x64.tar.gz coderm-reh-linux-arm64.tar.gz \
-                   coderm-reh-linux-armhf.tar.gz coderm-reh-darwin-arm64.tar.gz \
-                   coderm-reh-darwin-x64.tar.gz; do
+                   coderm-reh-linux-armhf.tar.gz coderm-reh-darwin-arm64.tar.gz; do
             if [ ! -f "artifacts/$f" ]; then
               MISSING="$MISSING $f"
             fi
@@ -440,8 +439,7 @@ jobs:
             artifacts/coderm-reh-linux-x64.tar.gz \
             artifacts/coderm-reh-linux-arm64.tar.gz \
             artifacts/coderm-reh-linux-armhf.tar.gz \
-            artifacts/coderm-reh-darwin-arm64.tar.gz \
-            artifacts/coderm-reh-darwin-x64.tar.gz
+            artifacts/coderm-reh-darwin-arm64.tar.gz
 
   # If any downstream job (build, build-reh, or create-release) fails, remove
   # the draft release and its tag to keep the Releases page clean. Only runs
