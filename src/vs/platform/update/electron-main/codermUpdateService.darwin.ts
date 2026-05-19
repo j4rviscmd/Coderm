@@ -263,7 +263,9 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	 */
 	private async extractAppFromDmg(dmgPath: string): Promise<string | undefined> {
 		const mountOutput = await this.runCommand('hdiutil', ['attach', '-nobrowse', dmgPath]);
-		const mountPoint = mountOutput.split('\n').find(l => l.includes('/Volumes/'))?.trim().split(/\s+/).pop();
+		const mountPoint = mountOutput.split('\n')
+			.map(l => l.match(/\/Volumes\/.+/)?.[0]?.trim())
+			.find(m => m);
 		if (!mountPoint) {
 			this.logService.error('coderm-update#extractAppFromDmg - could not find mount point');
 			return undefined;
