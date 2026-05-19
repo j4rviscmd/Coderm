@@ -156,14 +156,14 @@ jobs:
           cd /tmp/open-remote-ssh
           npm install
           npm run build
-          EXT_DIR=".build/builtInExtensions/jeanp413.open-remote-ssh"
+          EXT_DIR="$GITHUB_WORKSPACE/.build/builtInExtensions/jeanp413.open-remote-ssh"
           mkdir -p "$EXT_DIR"
           cp package.json "$EXT_DIR/"
           cp -r lib "$EXT_DIR/"
           [ -d resources ] && cp -r resources "$EXT_DIR/"
           [ -f LICENSE ] && cp LICENSE "$EXT_DIR/"
           [ -f CHANGELOG.md ] && cp CHANGELOG.md "$EXT_DIR/"
-          echo "Built open-remote-ssh $(node -p "require('./$EXT_DIR/package.json').version")"
+          echo "Built open-remote-ssh $(node -p "require('$EXT_DIR/package.json').version")"
 
       - run: npm run gulp compile-build-without-mangling
 
@@ -304,14 +304,14 @@ jobs:
           cd /tmp/open-remote-ssh
           npm install
           npm run build
-          EXT_DIR=".build/builtInExtensions/jeanp413.open-remote-ssh"
+          EXT_DIR="$GITHUB_WORKSPACE/.build/builtInExtensions/jeanp413.open-remote-ssh"
           mkdir -p "$EXT_DIR"
           cp package.json "$EXT_DIR/"
           cp -r lib "$EXT_DIR/"
           [ -d resources ] && cp -r resources "$EXT_DIR/"
           [ -f LICENSE ] && cp LICENSE "$EXT_DIR/"
           [ -f CHANGELOG.md ] && cp CHANGELOG.md "$EXT_DIR/"
-          echo "Built open-remote-ssh $(node -p "require('./$EXT_DIR/package.json').version")"
+          echo "Built open-remote-ssh $(node -p "require('$EXT_DIR/package.json').version")"
 
       - run: npm run gulp compile-build-without-mangling
 
