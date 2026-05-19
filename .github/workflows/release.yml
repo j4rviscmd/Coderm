@@ -313,18 +313,10 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
         run: npm run gulp vscode-reh-${{ matrix.platform }}-${{ matrix.arch }}-min
 
-      # Cross-compile native Node.js modules for ARM architectures.
-      #
-      # The JS bundle produced by the REH gulp task is platform-independent,
-      # but native addons (e.g. node-pty, native-watchdog, vscode-ripgrep)
-      # are compiled for the runner's x64 architecture. This step:
-      #   1. Removes the x64-compiled node_modules from the REH output
-      #   2. Runs `npm install --omit=dev && npm rebuild` inside a Docker
-      #      container using QEMU-emulated ARM Node.js so that .node binaries
-      #      match the target architecture (arm64 or armv7).
-      #
-      # Only runs for Linux ARM targets (arm64/armhf) since macOS ARM builds
-      # run natively on macos-14 (M1) runners.
+      # The gulp build produces a complete node_modules/ from remote/node_modules.
+      # JS packages are platform-independent, but native addons (.node files) are
+      # compiled for the runner's x64 architecture. This step rebuilds only the
+      # native modules for the target ARM architecture via Docker + QEMU emulation.
       - name: Cross-compile native modules for ARM
         if: matrix.platform == 'linux' && matrix.arch != 'x64'
         shell: bash
@@ -338,21 +330,11 @@ jobs:
           REH_DIR="${SRC_DIR}/../vscode-reh-linux-${{ matrix.arch }}"
           echo "Rebuilding native modules for ${{ matrix.arch }} via Docker (${DOCKER_PLATFORM})"
           cd "${REH_DIR}"
-          # The REH build strips dependencies from package.json, but npm install
-          # needs them to resolve the full dependency tree for ARM. Temporarily
-          # restore the original package.json (with dependencies) and swap back
-          # after install so the tarball ships the build's package.json.
-          cp package.json package.json.bak
-          cp "${SRC_DIR}/remote/package.json" package.json
-          trap 'mv package.json.bak package.json' EXIT
-          rm -rf node_modules
           docker run --rm --platform "${DOCKER_PLATFORM}" \
             -v "$(pwd)/..":/build \
             -w "/build/vscode-reh-linux-${{ matrix.arch }}" \
             "node:${NODE_MAJOR}" \
-            sh -c "npm install --omit=dev && npm rebuild"
-          mv package.json.bak package.json
-          trap - EXIT
+            sh -c "npm rebuild && find node_modules -name '*.node' -exec file {} \;"
 
       - name: Package REH tarball
         shell: bash
