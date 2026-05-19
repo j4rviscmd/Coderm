@@ -144,23 +144,26 @@ jobs:
 
       - run: npm ci
 
-      # Pre-download open-remote-ssh (not on MS Marketplace) so the
-      # builtInExtensions gulp task finds it already present and skips
-      # the marketplace download that would otherwise fail.
-      #
-      # This is a Coderm-specific extension bundled into every release
-      # to provide SSH remote development without requiring a Microsoft
-      # account or the proprietary VS Code Remote-SSH extension.
-      - name: Pre-download open-remote-ssh extension
+      # Build open-remote-ssh from the Coderm fork. The fork uses
+      # ManagedResolvedAuthority instead of ResolvedAuthority, eliminating
+      # local TCP listeners that trigger Windows firewall dialogs on
+      # unsigned binaries. Building from source avoids maintaining a
+      # separate VSIX release on the fork repo.
+      - name: Build open-remote-ssh extension from fork
         shell: bash
         run: |
+          git clone --branch managed-resolved-authority --depth 1 https://github.com/j4rviscmd/open-remote-ssh.git /tmp/open-remote-ssh
+          cd /tmp/open-remote-ssh
+          npm install
+          npm run build
           EXT_DIR=".build/builtInExtensions/jeanp413.open-remote-ssh"
           mkdir -p "$EXT_DIR"
-          curl -sL "https://github.com/jeanp413/open-remote-ssh/releases/download/v0.1.2/open-remote-ssh-0.1.2.vsix" -o /tmp/open-remote-ssh.vsix
-          unzip -q -o /tmp/open-remote-ssh.vsix -d /tmp/open-remote-ssh-ext
-          cp -r /tmp/open-remote-ssh-ext/extension/* "$EXT_DIR/"
-          rm -rf /tmp/open-remote-ssh-ext /tmp/open-remote-ssh.vsix
-          echo "Pre-downloaded open-remote-ssh $(node -p "require('./$EXT_DIR/package.json').version")"
+          cp package.json "$EXT_DIR/"
+          cp -r lib "$EXT_DIR/"
+          [ -d resources ] && cp -r resources "$EXT_DIR/"
+          [ -f LICENSE ] && cp LICENSE "$EXT_DIR/"
+          [ -f CHANGELOG.md ] && cp CHANGELOG.md "$EXT_DIR/"
+          echo "Built open-remote-ssh $(node -p "require('./$EXT_DIR/package.json').version")"
 
       - run: npm run gulp compile-build-without-mangling
 
@@ -294,16 +297,21 @@ jobs:
 
       - run: npm ci
 
-      - name: Pre-download open-remote-ssh extension
+      - name: Build open-remote-ssh extension from fork
         shell: bash
         run: |
+          git clone --branch managed-resolved-authority --depth 1 https://github.com/j4rviscmd/open-remote-ssh.git /tmp/open-remote-ssh
+          cd /tmp/open-remote-ssh
+          npm install
+          npm run build
           EXT_DIR=".build/builtInExtensions/jeanp413.open-remote-ssh"
           mkdir -p "$EXT_DIR"
-          curl -sL "https://github.com/jeanp413/open-remote-ssh/releases/download/v0.1.2/open-remote-ssh-0.1.2.vsix" -o /tmp/open-remote-ssh.vsix
-          unzip -q -o /tmp/open-remote-ssh.vsix -d /tmp/open-remote-ssh-ext
-          cp -r /tmp/open-remote-ssh-ext/extension/* "$EXT_DIR/"
-          rm -rf /tmp/open-remote-ssh-ext /tmp/open-remote-ssh.vsix
-          echo "Pre-downloaded open-remote-ssh $(node -p "require('./$EXT_DIR/package.json').version")"
+          cp package.json "$EXT_DIR/"
+          cp -r lib "$EXT_DIR/"
+          [ -d resources ] && cp -r resources "$EXT_DIR/"
+          [ -f LICENSE ] && cp LICENSE "$EXT_DIR/"
+          [ -f CHANGELOG.md ] && cp CHANGELOG.md "$EXT_DIR/"
+          echo "Built open-remote-ssh $(node -p "require('./$EXT_DIR/package.json').version")"
 
       - run: npm run gulp compile-build-without-mangling
 
