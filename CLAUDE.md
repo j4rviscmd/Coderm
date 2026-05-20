@@ -75,6 +75,10 @@ VSCode (microsoft/vscode) のforkプロジェクト。Neovimmer/Vimmer向けにt
 
 - `coderm.quickOpen.includeTerminals` (boolean, default: `false`)
 
+### 8. アップデートダウンロード進捗通知
+
+- `coderm.updateDownloadProgress.enabled` (boolean, default: `true`)
+
 ## product.json 変更項目
 
 - `nameShort`: `"Coderm"`
