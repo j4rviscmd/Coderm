@@ -163,9 +163,9 @@ jobs:
           path: ${{ matrix.artifact }}
           retention-days: 1
 
-  # Builds the REH (Remote Extension Host) server for x64 + darwin-arm64.
-  # Coderm only distributes macOS (arm64) and Windows (x64) desktop builds,
-  # so Linux ARM REH targets are excluded to avoid cross-compile failures.
+  # Builds the REH (Remote Extension Host) server for multiple platforms.
+  # Each target uses a native runner to avoid cross-compile failures with
+  # native modules (ssh2, node-pty, kerberos, etc.).
   build-reh:
     name: Build REH (${{ matrix.target }})
     needs: preflight
@@ -177,6 +177,10 @@ jobs:
           - target: linux-x64
             os: ubuntu-latest
             arch: x64
+            platform: linux
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+            arch: arm64
             platform: linux
           - target: darwin-arm64
             os: macos-14
@@ -300,7 +304,8 @@ jobs:
           echo "Verifying assets..."
           MISSING=""
           for f in Coderm-arm64.dmg CodermSetup-x64.exe \
-                   coderm-reh-linux-x64.tar.gz coderm-reh-darwin-arm64.tar.gz; do
+                   coderm-reh-linux-x64.tar.gz coderm-reh-linux-arm64.tar.gz \
+                   coderm-reh-darwin-arm64.tar.gz; do
             if [ ! -f "artifacts/$f" ]; then
               MISSING="$MISSING $f"
             fi
@@ -324,6 +329,7 @@ jobs:
             artifacts/Coderm-arm64.dmg \
             artifacts/CodermSetup-x64.exe \
             artifacts/coderm-reh-linux-x64.tar.gz \
+            artifacts/coderm-reh-linux-arm64.tar.gz \
             artifacts/coderm-reh-darwin-arm64.tar.gz
 
   # If any downstream job (build, build-reh, or create-release) fails, remove
