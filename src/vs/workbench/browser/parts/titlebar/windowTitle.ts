@@ -38,6 +38,13 @@ const enum WindowSettingNames {
 	title = 'window.title',
 }
 
+/**
+ * The default window title template string, varying by platform.
+ *
+ * - **macOS (native):** Omits the dirty indicator since macOS provides a native one.
+ * - **Web:** Appends the remote name to the base template.
+ * - **Other platforms:** Uses the base template with dirty indicator, editor name, root name, profile name, and app name.
+ */
 export const defaultWindowTitle = (() => {
 	if (isMacintosh && isNative) {
 		return '${activeEditorShort}${separator}${rootName}${separator}${profileName}'; // macOS has native dirty indicator
@@ -50,8 +57,20 @@ export const defaultWindowTitle = (() => {
 
 	return base;
 })();
+/** The default separator used between title segments. Uses an em-dash on macOS and a hyphen elsewhere. */
 export const defaultWindowTitleSeparator = isMacintosh ? ' \u2014 ' : ' - ';
 
+/**
+ * Manages the browser window title for the workbench.
+ *
+ * Subscribes to configuration changes, active editor changes, workspace changes,
+ * and other events to keep the window title in sync. The title is built from a
+ * configurable template string that supports variable substitution (e.g.
+ * `${activeEditorShort}`, `${rootName}`, `${appName}`).
+ *
+ * Title updates are debounced via a {@link RunOnceScheduler} to coalesce rapid
+ * successive changes.
+ */
 export class WindowTitle extends Disposable {
 
 	private static readonly NLS_USER_IS_ADMIN = isWindows ? localize('userIsAdmin', "[Administrator]") : localize('userIsSudo', "[Superuser]");
@@ -65,17 +84,21 @@ export class WindowTitle extends Disposable {
 	private readonly titleUpdater = this._register(new RunOnceScheduler(() => this.doUpdateTitle(), 0));
 
 	private readonly onDidChangeEmitter = this._register(new Emitter<void>());
+	/** Event fired when the window title has been updated. */
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
+	/** The current window title string, or an empty string if not yet computed. */
 	get value() { return this.title ?? ''; }
+	/** The human-readable label of the current workspace. */
 	get workspaceName() { return this.labelService.getWorkspaceLabel(this.contextService.getWorkspace()); }
+	/** The active file name with a dirty indicator prefix, or `undefined` when no editor is active. */
 	get fileName() {
 		const activeEditor = this.editorService.activeEditor;
 		if (!activeEditor) {
 			return undefined;
 		}
 		const fileName = activeEditor.getTitle(Verbosity.SHORT);
-		const dirty = activeEditor?.isDirty() && !activeEditor.isSaving() ? WindowTitle.TITLE_DIRTY : '';
+		const dirty = activeEditor.isDirty() && !activeEditor.isSaving() ? WindowTitle.TITLE_DIRTY : '';
 		return `${dirty}${fileName}`;
 	}
 
@@ -86,6 +109,9 @@ export class WindowTitle extends Disposable {
 
 	private readonly windowId: number;
 
+	/**
+	 * @param targetWindow - The browser window whose document title this instance manages.
+	 */
 	constructor(
 		targetWindow: CodeWindow,
 		@IConfigurationService protected readonly configurationService: IConfigurationService,
@@ -191,10 +217,7 @@ export class WindowTitle extends Disposable {
 		if (title !== this.title) {
 
 			// Always set the native window title to identify us properly to the OS
-			let nativeTitle = title;
-			if (!trim(nativeTitle)) {
-				nativeTitle = this.productService.nameLong;
-			}
+			const nativeTitle = trim(title) ? title : this.productService.nameLong;
 
 			const window = getWindowById(this.windowId, true).window;
 			if (!window.document.title && isMacintosh && nativeTitle === this.productService.nameLong) {
@@ -231,27 +254,34 @@ export class WindowTitle extends Disposable {
 		return title.replace(/[^\S ]/g, ' ');
 	}
 
+	/**
+	 * Returns prefix and suffix strings that decorate the window title.
+	 *
+	 * The prefix may include the Extension Development Host label or a custom prefix.
+	 * The suffix indicates elevated privileges (Administrator / Superuser).
+	 *
+	 * @returns An object with optional `prefix` and `suffix` decoration strings.
+	 */
 	getTitleDecorations() {
-		let prefix: string | undefined;
-		let suffix: string | undefined;
-
-		if (this.properties.prefix) {
-			prefix = this.properties.prefix;
-		}
+		let prefix = this.properties.prefix;
 
 		if (this.environmentService.isExtensionDevelopment) {
-			prefix = !prefix
-				? WindowTitle.NLS_EXTENSION_HOST
-				: `${WindowTitle.NLS_EXTENSION_HOST} - ${prefix}`;
+			prefix = prefix
+				? `${WindowTitle.NLS_EXTENSION_HOST} - ${prefix}`
+				: WindowTitle.NLS_EXTENSION_HOST;
 		}
 
-		if (this.properties.isAdmin) {
-			suffix = WindowTitle.NLS_USER_IS_ADMIN;
-		}
+		const suffix = this.properties.isAdmin ? WindowTitle.NLS_USER_IS_ADMIN : undefined;
 
 		return { prefix, suffix };
 	}
 
+	/**
+	 * Updates the title properties (admin status, purity, and custom prefix) and
+	 * schedules a title refresh when any value has changed.
+	 *
+	 * @param properties - A partial set of title properties to merge into the current state.
+	 */
 	updateProperties(properties: ITitleProperties): void {
 		const isAdmin = typeof properties.isAdmin === 'boolean' ? properties.isAdmin : this.properties.isAdmin;
 		const isPure = typeof properties.isPure === 'boolean' ? properties.isPure : this.properties.isPure;
@@ -266,6 +296,13 @@ export class WindowTitle extends Disposable {
 		}
 	}
 
+	/**
+	 * Registers custom template variables that can be referenced in the title
+	 * template by name. Each variable is backed by a context key whose current
+	 * value is resolved at title-rendering time.
+	 *
+	 * @param variables - Array of `{ name, contextKey }` pairs to register.
+	 */
 	registerVariables(variables: ITitleVariable[]): void {
 		let changed = false;
 
@@ -283,6 +320,15 @@ export class WindowTitle extends Disposable {
 	}
 
 	/**
+	 * Builds the window title string by resolving the configured template against
+	 * the current editor, workspace, profile, and environment state.
+	 *
+	 * When a screen reader is active and the template does not already include
+	 * `${activeEditorState}`, the editor state is automatically appended for
+	 * accessibility.
+	 *
+	 * @returns The fully resolved title string (without decorations).
+	 *
 	 * Possible template values:
 	 *
 	 * {activeEditorLong}: e.g. /Users/Development/myFolder/myFileFolder/myFile.txt
@@ -325,7 +371,7 @@ export class WindowTitle extends Disposable {
 		// Compute folder resource
 		// Single Root Workspace: always the root single workspace in this case
 		// Otherwise: root folder of the currently active file if any
-		let folder: IWorkspaceFolder | undefined = undefined;
+		let folder: IWorkspaceFolder | undefined;
 		if (this.contextService.getWorkbenchState() === WorkbenchState.FOLDER) {
 			folder = workspace.folders[0];
 		} else if (editorResource) {
@@ -335,7 +381,7 @@ export class WindowTitle extends Disposable {
 		// Compute remote
 		// vscode-remtoe: use as is
 		// otherwise figure out if we have a virtual folder opened
-		let remoteName: string | undefined = undefined;
+		let remoteName: string | undefined;
 		if (this.environmentService.remoteAuthority && !isWeb) {
 			remoteName = this.labelService.getHostLabel(Schemas.vscodeRemote, this.environmentService.remoteAuthority);
 		} else {
@@ -346,9 +392,9 @@ export class WindowTitle extends Disposable {
 		}
 
 		// Variables
-		const activeEditorShort = editor ? editor.getTitle(Verbosity.SHORT) : '';
-		const activeEditorMedium = editor ? editor.getTitle(Verbosity.MEDIUM) : activeEditorShort;
-		const activeEditorLong = editor ? editor.getTitle(Verbosity.LONG) : activeEditorMedium;
+		const activeEditorShort = editor?.getTitle(Verbosity.SHORT) ?? '';
+		const activeEditorMedium = editor?.getTitle(Verbosity.MEDIUM) ?? activeEditorShort;
+		const activeEditorLong = editor?.getTitle(Verbosity.LONG) ?? activeEditorMedium;
 		const activeFolderShort = editorFolderResource ? basename(editorFolderResource) : '';
 		const activeFolderMedium = editorFolderResource ? this.labelService.getUriLabel(editorFolderResource, { relative: true }) : '';
 		const activeFolderLong = editorFolderResource ? this.labelService.getUriLabel(editorFolderResource) : '';
@@ -358,8 +404,10 @@ export class WindowTitle extends Disposable {
 		const folderName = folder ? folder.name : '';
 		const folderPath = folder ? this.labelService.getUriLabel(folder.uri) : '';
 		const dirty = editor?.isDirty() && !editor.isSaving() ? WindowTitle.TITLE_DIRTY : '';
-		const appName = this.productService.nameLong;
 		const profileName = this.userDataProfileService.currentProfile.isDefault ? '' : this.userDataProfileService.currentProfile.name;
+		const suppressAppName = !isConfigured(this.configurationService.inspect<string>(WindowSettingNames.title))
+			&& !!(activeEditorShort || rootName || profileName || dirty);
+		const appName = suppressAppName ? '' : this.productService.nameLong;
 		const focusedView: string = this.viewsService.getFocusedViewName();
 		const activeEditorState = editorResource ? this.decorationsService.getDecoration(editorResource, false)?.tooltip : undefined;
 		const activeEditorLanguageId = this.editorService.activeTextEditorLanguageId;
@@ -407,20 +455,30 @@ export class WindowTitle extends Disposable {
 		});
 	}
 
+	/**
+	 * Determines whether the window title format has been customized by the user
+	 * or overridden by the configuration registry, as opposed to using the
+	 * built-in default.
+	 *
+	 * Also returns `true` when a screen reader is active or the template already
+	 * includes `${activeEditorState}`, since those cases modify the effective title.
+	 *
+	 * @returns `true` if the title format differs from the out-of-box default.
+	 */
 	isCustomTitleFormat(): boolean {
 		if (this.accessibilityService.isScreenReaderOptimized() || this.titleIncludesEditorState) {
 			return true;
 		}
-		const title = this.configurationService.inspect<string>(WindowSettingNames.title);
-		const titleSeparator = this.configurationService.inspect<string>(WindowSettingNames.titleSeparator);
 
-		if (isConfigured(title) || isConfigured(titleSeparator)) {
+		const titleInspect = this.configurationService.inspect<string>(WindowSettingNames.title);
+		const titleSeparatorInspect = this.configurationService.inspect<string>(WindowSettingNames.titleSeparator);
+		if (isConfigured(titleInspect) || isConfigured(titleSeparatorInspect)) {
 			return true;
 		}
 
 		// Check if the default value is overridden from the configuration registry
 		const configurationRegistry = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration);
 		const configurationProperties = configurationRegistry.getConfigurationProperties();
-		return title.defaultValue !== configurationProperties[WindowSettingNames.title]?.defaultDefaultValue;
+		return titleInspect.defaultValue !== configurationProperties[WindowSettingNames.title]?.defaultDefaultValue;
 	}
 }
