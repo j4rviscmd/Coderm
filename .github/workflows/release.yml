@@ -17,8 +17,7 @@ permissions:
 
 jobs:
   # Reads the version from package.json and checks whether a GitHub Release
-  # for that version already exists. Also detects REH-related code changes
-  # to decide whether to rebuild the server or copy from previous release.
+  # for that version already exists.
   preflight:
     name: Preflight
     runs-on: ubuntu-latest
@@ -26,7 +25,6 @@ jobs:
       skip: ${{ steps.check.outputs.skip }}
       version: ${{ steps.check.outputs.version }}
       tag: ${{ steps.check.outputs.tag }}
-      reh_changed: ${{ steps.reh.outputs.reh_changed }}
     steps:
       # Full history is needed so that `gh release view` can resolve the tag.
       - uses: actions/checkout@v4
@@ -49,58 +47,6 @@ jobs:
           else
             echo "No release for ${TAG}. Proceeding."
             echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Determines whether the REH server needs to be rebuilt or can be
-      # copied from the previous release. Skips the build-reh job entirely
-      # when no REH-related source paths have changed, saving ~60 min of
-      # CI time per release.
-      #
-      # Decision tree:
-      #   1. No previous release exists  -> build (first release)
-      #   2. Previous release lacks REH   -> build (backfill)
-      #   3. git diff shows REH paths     -> build (code changed)
-      #   4. No REH-relevant diff         -> skip (reuse assets)
-      - name: Detect REH changes
-        id: reh
-        if: steps.check.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
-          if [ -z "$PREV_TAG" ]; then
-            echo "No previous release. Building REH."
-            echo "reh_changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Check if previous release has REH assets
-          HAS_REH=$(gh release view "$PREV_TAG" --json assets --jq '[.assets[] | select(.name | startswith("coderm-reh-"))] | length')
-          if [ "$HAS_REH" = "0" ]; then
-            echo "Previous release has no REH assets. Building REH."
-            echo "reh_changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Watched paths: any change under these directories/files
-          # indicates the REH server output may differ from the
-          # previous release and must be rebuilt.
-          CHANGES=$(git diff --name-only "$PREV_TAG" HEAD -- \
-            "src/vs/server/" \
-            "remote/" \
-            "build/gulpfile.reh.ts" \
-            "src/vs/platform/remote/" \
-            "src/vs/workbench/services/remote/" \
-            "src/vs/workbench/api/node/extensionHostProcess.ts" \
-            2>/dev/null || echo "diff-failed")
-
-          if [ -z "$CHANGES" ]; then
-            echo "No REH changes since ${PREV_TAG}. Will copy from previous release."
-            echo "reh_changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "REH changes detected:"
-            echo "$CHANGES"
-            echo "reh_changed=true" >> "$GITHUB_OUTPUT"
           fi
 
   # Builds Coderm for macOS (ARM) and Windows (x64) in parallel.
@@ -218,16 +164,13 @@ jobs:
           retention-days: 1
 
   # Builds the REH (Remote Extension Host) server for 4 platforms.
-  # Only runs when REH-related code has changed since the previous release
-  # (controlled by the preflight job's reh_changed output).
-  #
   # The REH server is the headless VS Code backend that runs on remote
   # machines. It is downloaded by the Coderm client via the URL template
   # configured in product.json's serverDownloadUrlTemplate field.
   build-reh:
     name: Build REH (${{ matrix.target }})
     needs: preflight
-    if: needs.preflight.outputs.skip != 'true' && needs.preflight.outputs.reh_changed == 'true'
+    if: needs.preflight.outputs.skip != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -365,7 +308,7 @@ jobs:
       always() &&
       needs.preflight.outputs.skip != 'true' &&
       needs.build.result == 'success' &&
-      (needs.build-reh.result == 'success' || needs.build-reh.result == 'skipped')
+      needs.build-reh.result == 'success'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -382,34 +325,11 @@ jobs:
           merge-multiple: true
 
       - name: Download REH build artifacts
-        if: needs.preflight.outputs.reh_changed == 'true'
         uses: actions/download-artifact@v4
         with:
           pattern: "coderm-reh-*"
           path: artifacts
           merge-multiple: true
-
-      # Reuses REH tarballs from the most recent previous release instead of
-      # rebuilding them, which saves ~60 minutes of CI time. This only runs
-      # when the preflight job determined that no REH-relevant code has changed
-      # since the previous release.
-      - name: Copy REH from previous release
-        if: needs.preflight.outputs.reh_changed == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
-          if [ -z "$PREV_TAG" ]; then
-            echo "ERROR: No previous release to copy REH from"
-            exit 1
-          fi
-          echo "Copying REH assets from ${PREV_TAG}"
-          for target in linux-x64 linux-arm64 linux-armhf darwin-arm64; do
-            echo "Downloading coderm-reh-${target}.tar.gz from ${PREV_TAG}"
-            gh release download "${PREV_TAG}" \
-              --pattern "coderm-reh-${target}.tar.gz" \
-              --dir artifacts
-          done
 
       - name: Verify all assets
         run: |
