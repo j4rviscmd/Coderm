@@ -1,10 +1,11 @@
+
 <div align="center">
 
 # Coderm
 
 <!-- TODO: Screenshot area -->
 
-[English](README.en.md) | [日本語](README.md)
+[日本語](README.md) | English
 
 [![Windows](https://img.shields.io/badge/Windows-Supported-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/j4rviscmd/Coderm/releases/latest/download/CodermSetup-x64.exe)
 [![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/j4rviscmd/Coderm/releases/latest/download/Coderm-arm64.dmg)
