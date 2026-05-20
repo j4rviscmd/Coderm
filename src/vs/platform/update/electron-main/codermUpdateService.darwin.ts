@@ -6,7 +6,6 @@
 import * as electron from 'electron';
 import { spawn } from 'child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
-import { Delayer } from '../../../base/common/async.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
 import { CancellationToken } from '../../../base/common/cancellation.js';
 import { memoize } from '../../../base/common/decorators.js';
@@ -218,7 +217,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	 *
 	 * A transforming stream is used so that each chunk increments the
 	 * downloaded-byte counter and updates the `Downloading` state (throttled
-	 * to at most once every 500 ms).
+	 * to at most once every 200 ms).
 	 *
 	 * @param url - The remote URL of the DMG file.
 	 * @param destPath - Absolute local path where the file should be written.
@@ -231,23 +230,25 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		const totalBytes = typeof contentLengthHeader === 'string' ? parseInt(contentLengthHeader, 10) : undefined;
 
 		let downloadedBytes = 0;
-		const progressDelayer = new Delayer<void>(500);
+		let lastProgressTime = 0;
 		const progressStream = transform<VSBuffer, VSBuffer>(
 			context.stream,
 			{
 				data: data => {
 					downloadedBytes += data.byteLength;
-					progressDelayer.trigger(() => {
+					const now = Date.now();
+					if (now - lastProgressTime >= 200) {
+						lastProgressTime = now;
 						this.setState(State.Downloading(update, true, false, downloadedBytes, totalBytes, startTime));
-					});
+					}
 					return data;
 				}
 			},
 			chunks => VSBuffer.concat(chunks)
 		);
 
-		await this.fileService.writeFile(URI.file(destPath), progressStream)
-			.finally(() => progressDelayer.dispose());
+		await this.fileService.writeFile(URI.file(destPath), progressStream);
+		this.setState(State.Downloading(update, true, false, downloadedBytes, totalBytes, startTime));
 	}
 
 	/**

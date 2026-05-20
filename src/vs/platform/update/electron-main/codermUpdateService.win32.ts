@@ -7,7 +7,7 @@ import { ChildProcess, spawn } from 'child_process';
 import { existsSync, unlinkSync } from 'fs';
 import { mkdir, readFile, unlink } from 'fs/promises';
 import { tmpdir } from 'os';
-import { Delayer, ProcessTimeRunOnceScheduler, timeout } from '../../../base/common/async.js';
+import { ProcessTimeRunOnceScheduler, timeout } from '../../../base/common/async.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
 import { CancellationToken, CancellationTokenSource } from '../../../base/common/cancellation.js';
 import { memoize } from '../../../base/common/decorators.js';
@@ -168,15 +168,17 @@ export class CodermWin32UpdateService extends AbstractUpdateService implements I
 								const totalBytes = contentLength ? parseInt(contentLength, 10) : undefined;
 
 								let downloadedBytes = 0;
-								const progressDelayer = new Delayer<void>(500);
+								let lastProgressTime = 0;
 								const progressStream = transform<VSBuffer, VSBuffer>(
 									context.stream,
 									{
 										data: data => {
 											downloadedBytes += data.byteLength;
-											progressDelayer.trigger(() => {
+											const now = Date.now();
+											if (now - lastProgressTime >= 200) {
+												lastProgressTime = now;
 												this.setState(State.Downloading(update, explicit, this._overwrite, downloadedBytes, totalBytes, startTime));
-											});
+											}
 											return data;
 										}
 									},
@@ -184,7 +186,9 @@ export class CodermWin32UpdateService extends AbstractUpdateService implements I
 								);
 
 								return this.fileService.writeFile(URI.file(downloadPath), progressStream)
-									.finally(() => progressDelayer.dispose());
+									.then(() => {
+										this.setState(State.Downloading(update, explicit, this._overwrite, downloadedBytes, totalBytes, startTime));
+									});
 							})
 							.then(update.sha256hash ? () => checksum(downloadPath, update.sha256hash) : () => undefined)
 							.then(() => pfs.Promises.rename(downloadPath, updatePackagePath, false))
