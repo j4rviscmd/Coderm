@@ -729,7 +729,7 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration)
 				// Note: Type is set only to object because to support policies generation during build time, where single type is expected.
 				type: 'object',
 				markdownDescription: localize('extensions.allowed', "Specify a list of extensions that are allowed to use. This helps maintain a secure and consistent development environment by restricting the use of unauthorized extensions. For more information on how to configure this setting, please visit the [Configure Allowed Extensions](https://aka.ms/vscode/enterprise/extensions/allowed) section."),
-				default: '*',
+				default: { '*': true, 'ms-vscode-remote.remote-ssh': false, 'ms-vscode-remote.remote-ssh-edit': false, 'ms-vscode.remote-explorer': false, 'ms-vscode-remote.remote-containers': false, 'ms-vscode-remote.remote-wsl': false, 'ms-vscode.remote-tunnels': false },
 				defaultSnippets: [{
 					body: {},
 					description: localize('extensions.allowed.none', "No extensions are allowed."),

@@ -16,4 +16,5 @@ import './editorGroupIndex.js';
 import './preventNewGroupOnFocus.js';
 import './quickOpenIncludeTerminals.js';
 import './resizePaneActions.js';
+import './remoteSSHGuard.js';
 import './updateDownloadProgress.js';
