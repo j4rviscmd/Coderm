@@ -283,7 +283,13 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 			const sourceApp = path.join(mountPoint, appName);
 			const stagedApp = path.join(this.stagingDir, appName);
 
-			rmSync(stagedApp, { recursive: true, force: true });
+			const origNoAsar = process.noAsar;
+			process.noAsar = true;
+			try {
+				rmSync(stagedApp, { recursive: true, force: true });
+			} finally {
+				process.noAsar = origNoAsar;
+			}
 
 			await this.runCommand('cp', ['-R', sourceApp, stagedApp]);
 
