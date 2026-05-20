@@ -163,10 +163,9 @@ jobs:
           path: ${{ matrix.artifact }}
           retention-days: 1
 
-  # Builds the REH (Remote Extension Host) server for 4 platforms.
-  # The REH server is the headless VS Code backend that runs on remote
-  # machines. It is downloaded by the Coderm client via the URL template
-  # configured in product.json's serverDownloadUrlTemplate field.
+  # Builds the REH (Remote Extension Host) server for x64 + darwin-arm64.
+  # Coderm only distributes macOS (arm64) and Windows (x64) desktop builds,
+  # so Linux ARM REH targets are excluded to avoid cross-compile failures.
   build-reh:
     name: Build REH (${{ matrix.target }})
     needs: preflight
@@ -178,14 +177,6 @@ jobs:
           - target: linux-x64
             os: ubuntu-latest
             arch: x64
-            platform: linux
-          - target: linux-arm64
-            os: ubuntu-latest
-            arch: arm64
-            platform: linux
-          - target: linux-armhf
-            os: ubuntu-latest
-            arch: armhf
             platform: linux
           - target: darwin-arm64
             os: macos-14
@@ -220,10 +211,6 @@ jobs:
       - name: Install native dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get install -y libkrb5-dev libx11-dev libxkbfile-dev
-
-      - name: Set up QEMU
-        if: matrix.platform == 'linux' && matrix.arch != 'x64'
-        uses: docker/setup-qemu-action@v3
 
       - name: Create swap
         if: runner.os == 'Linux'
@@ -263,29 +250,6 @@ jobs:
           MANGLER_MAX_WORKERS: 1
           NODE_OPTIONS: --max-old-space-size=6144
         run: npm run gulp vscode-reh-${{ matrix.platform }}-${{ matrix.arch }}-min
-
-      # The gulp build produces a complete node_modules/ from remote/node_modules.
-      # JS packages are platform-independent, but native addons (.node files) are
-      # compiled for the runner's x64 architecture. This step rebuilds only the
-      # native modules for the target ARM architecture via Docker + QEMU emulation.
-      - name: Cross-compile native modules for ARM
-        if: matrix.platform == 'linux' && matrix.arch != 'x64'
-        shell: bash
-        run: |
-          NODE_MAJOR=$(node -v | sed 's/v\([0-9]*\).*/\1/')
-          case "${{ matrix.arch }}" in
-            arm64) DOCKER_PLATFORM="linux/arm64" ;;
-            *)     DOCKER_PLATFORM="linux/arm/v7" ;;
-          esac
-          SRC_DIR="$(pwd)"
-          REH_DIR="${SRC_DIR}/../vscode-reh-linux-${{ matrix.arch }}"
-          echo "Rebuilding native modules for ${{ matrix.arch }} via Docker (${DOCKER_PLATFORM})"
-          cd "${REH_DIR}"
-          docker run --rm --platform "${DOCKER_PLATFORM}" \
-            -v "$(pwd)/..":/build \
-            -w "/build/vscode-reh-linux-${{ matrix.arch }}" \
-            "node:${NODE_MAJOR}" \
-            sh -c "npm rebuild && find node_modules -name '*.node' -exec file {} \;"
 
       - name: Package REH tarball
         shell: bash
@@ -336,8 +300,7 @@ jobs:
           echo "Verifying assets..."
           MISSING=""
           for f in Coderm-arm64.dmg CodermSetup-x64.exe \
-                   coderm-reh-linux-x64.tar.gz coderm-reh-linux-arm64.tar.gz \
-                   coderm-reh-linux-armhf.tar.gz coderm-reh-darwin-arm64.tar.gz; do
+                   coderm-reh-linux-x64.tar.gz coderm-reh-darwin-arm64.tar.gz; do
             if [ ! -f "artifacts/$f" ]; then
               MISSING="$MISSING $f"
             fi
@@ -361,8 +324,6 @@ jobs:
             artifacts/Coderm-arm64.dmg \
             artifacts/CodermSetup-x64.exe \
             artifacts/coderm-reh-linux-x64.tar.gz \
-            artifacts/coderm-reh-linux-arm64.tar.gz \
-            artifacts/coderm-reh-linux-armhf.tar.gz \
             artifacts/coderm-reh-darwin-arm64.tar.gz
 
   # If any downstream job (build, build-reh, or create-release) fails, remove
