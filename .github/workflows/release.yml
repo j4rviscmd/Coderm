@@ -107,7 +107,7 @@ jobs:
           cp package.json "$EXT_DIR/"
           cp -r lib "$EXT_DIR/"
           [ -d resources ] && cp -r resources "$EXT_DIR/"
-          [ -f LICENSE ] && cp LICENSE "$EXT_DIR/"
+          [ -f LICENSE.txt ] && cp LICENSE.txt "$EXT_DIR/"
           [ -f CHANGELOG.md ] && cp CHANGELOG.md "$EXT_DIR/"
           echo "Built open-remote-ssh $(node -p "require('$EXT_DIR/package.json').version")"
 
@@ -239,7 +239,7 @@ jobs:
           cp package.json "$EXT_DIR/"
           cp -r lib "$EXT_DIR/"
           [ -d resources ] && cp -r resources "$EXT_DIR/"
-          [ -f LICENSE ] && cp LICENSE "$EXT_DIR/"
+          [ -f LICENSE.txt ] && cp LICENSE.txt "$EXT_DIR/"
           [ -f CHANGELOG.md ] && cp CHANGELOG.md "$EXT_DIR/"
           echo "Built open-remote-ssh $(node -p "require('$EXT_DIR/package.json').version")"
 
