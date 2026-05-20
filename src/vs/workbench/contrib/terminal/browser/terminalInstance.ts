@@ -409,6 +409,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 
 		this._wrapperElement = document.createElement('div');
 		this._wrapperElement.classList.add('terminal-wrapper');
+		this._applyTerminalHorizontalPadding();
 
 		this._widgetManager = this._register(instantiationService.createInstance(TerminalWidgetManager));
 
@@ -597,9 +598,13 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 				TerminalSettingId.FontWeightBold,
 				TerminalSettingId.LetterSpacing,
 				TerminalSettingId.LineHeight,
-				'editor.fontFamily'
+				'editor.fontFamily',
+				'coderm.terminal.horizontalPadding'
 			];
 			if (layoutSettings.some(id => e.affectsConfiguration(id))) {
+				if (e.affectsConfiguration('coderm.terminal.horizontalPadding')) {
+					this._applyTerminalHorizontalPadding();
+				}
 				this._layoutSettingsChanged = true;
 				await this._resize();
 			}
@@ -754,6 +759,17 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 	@debounce(50)
 	private _fireMaximumDimensionsChanged(): void {
 		this._onMaximumDimensionsChanged.fire();
+	}
+
+	/**
+	 * Reads the `coderm.terminal.horizontalPadding` setting and sets it as the
+	 * `--coderm-terminal-hpadding` CSS custom property on the terminal wrapper
+	 * DOM element. This value is consumed by `terminal.css` to control the left
+	 * and right padding of the xterm.js canvas.
+	 */
+	private _applyTerminalHorizontalPadding(): void {
+		const padding = this._configurationService.getValue<number>('coderm.terminal.horizontalPadding') ?? 20;
+		this._wrapperElement.style.setProperty('--coderm-terminal-hpadding', `${padding}px`);
 	}
 
 	private _getDimension(width: number, height: number): ICanvasDimensions | undefined {

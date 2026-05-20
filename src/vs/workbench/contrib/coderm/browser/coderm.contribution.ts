@@ -17,4 +17,5 @@ import './preventNewGroupOnFocus.js';
 import './quickOpenIncludeTerminals.js';
 import './resizePaneActions.js';
 import './remoteSSHGuard.js';
+import './terminalHorizontalPadding.js';
 import './updateDownloadProgress.js';
