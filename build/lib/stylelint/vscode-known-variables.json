@@ -1074,7 +1074,8 @@
 		"--vscode-inline-chat-affordance-height",
 		"--collapse-from-width",
 		"--slide-from-x",
-		"--slide-from-y"
+		"--slide-from-y",
+		"--coderm-terminal-hpadding"
 	],
 	"sizes": [
 		"--vscode-bodyFontSize",
