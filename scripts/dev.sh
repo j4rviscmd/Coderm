@@ -66,11 +66,6 @@ copy_prod_userdata() {
 			;;
 	esac
 
-	# Data dirs use the same pattern on all supported platforms
-	# (the platform check above returns early for anything else).
-	local prod_data_dir="$HOME/.coderm"
-	local dev_data_dir="$HOME/.coderm-dev"
-
 	if [ -d "$prod_dir" ] && [ ! -d "$dev_dir" ]; then
 		echo "[dev] Copying production user data to dev directory..."
 		mkdir -p "$dev_dir/User"
@@ -79,12 +74,6 @@ copy_prod_userdata() {
 				cp -R "$prod_dir/User/$item" "$dev_dir/User/$item"
 			fi
 		done
-	fi
-
-	if [ -n "$prod_data_dir" ] && [ -d "$prod_data_dir/extensions" ] && [ ! -d "$dev_data_dir/extensions" ]; then
-		echo "[dev] Copying production extensions to dev directory..."
-		mkdir -p "$dev_data_dir/extensions"
-		cp -R "$prod_data_dir/extensions/"* "$dev_data_dir/extensions/" 2>/dev/null || true
 	fi
 
 	if [ -d "$dev_dir" ]; then

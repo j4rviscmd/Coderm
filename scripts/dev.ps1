@@ -37,8 +37,6 @@ $watchProcess = $null
 function Copy-ProdUserData {
     $prodDir = Join-Path $env:APPDATA 'Coderm'
     $devDir = Join-Path $env:APPDATA 'Coderm Dev'
-    $prodDataDir = Join-Path $env:USERPROFILE '.coderm'
-    $devDataDir = Join-Path $env:USERPROFILE '.coderm-dev'
 
     if ((Test-Path $prodDir) -and -not (Test-Path $devDir)) {
         Write-Host '[dev] Copying production user data to dev directory...' -ForegroundColor Cyan
@@ -49,14 +47,6 @@ function Copy-ProdUserData {
                 Copy-Item -Path $src -Destination (Join-Path "$devDir\User" $item) -Recurse -Force
             }
         }
-    }
-
-    $prodExtDir = Join-Path $prodDataDir 'extensions'
-    $devExtDir = Join-Path $devDataDir 'extensions'
-    if ((Test-Path $prodExtDir) -and -not (Test-Path $devExtDir)) {
-        Write-Host '[dev] Copying production extensions to dev directory...' -ForegroundColor Cyan
-        New-Item -ItemType Directory -Path $devExtDir -Force | Out-Null
-        Get-ChildItem -Path $prodExtDir | Copy-Item -Destination $devExtDir -Recurse -Force
     }
 
     if (Test-Path $devDir) {
