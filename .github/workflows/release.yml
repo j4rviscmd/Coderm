@@ -98,7 +98,7 @@ jobs:
       - name: Build open-remote-ssh extension from fork
         shell: bash
         run: |
-          git clone --branch managed-resolved-authority --depth 1 https://github.com/j4rviscmd/open-remote-ssh.git /tmp/open-remote-ssh
+          git clone --branch master --depth 1 https://github.com/j4rviscmd/open-remote-ssh.git /tmp/open-remote-ssh
           cd /tmp/open-remote-ssh
           npm install
           npm run build
@@ -234,7 +234,7 @@ jobs:
       - name: Build open-remote-ssh extension from fork
         shell: bash
         run: |
-          git clone --branch managed-resolved-authority --depth 1 https://github.com/j4rviscmd/open-remote-ssh.git /tmp/open-remote-ssh
+          git clone --branch master --depth 1 https://github.com/j4rviscmd/open-remote-ssh.git /tmp/open-remote-ssh
           cd /tmp/open-remote-ssh
           npm install
           npm run build
