@@ -50,6 +50,7 @@ Codermはupstream（VS Code）のforkであり、独自のバージョニング�
 | **CI監視は`/monitor-pr-ci`スキルで実行** | 30秒ポーリング・15分タイムアウトが実装済みのため |
 | **GitHub Release作成・タグプッシュは絶対禁止** | タグ生成・Releaseページ作成はCI/CDパイプライン（release.yml）が担当する。AIが手動で実行すると二重実行・競合が発生する |
 | **PRマージ後のbranchは必ず削除** | リモート・ローカル両方削除してリポジトリを整理する |
+| **バージョンフォーマットは必ずセマンティック（3セグメント）** | Codermバージョンは `X.Y.Z` または `X.Y.Z-coderm.A.B.C` のいずれか。セグメントの省略（例: `coderm.0.10` のように末尾 `.0` を省略）は禁止。Step 3-2・Step 4・Step 6の各タイミングで正規表現検証を必ず実行すること |
 
 ## コンテキスト情報
 
@@ -341,6 +342,14 @@ echo ""
 echo "次期バージョン: $next_version"
 echo "理由: $version_reason"
 
+# 次期バージョンのフォーマット検証（必須）
+if ! echo "$next_version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-coderm\.[0-9]+\.[0-9]+\.[0-9]+)?$'; then
+  echo "エラー: 次期バージョンのフォーマットが不正です: $next_version"
+  echo "期待フォーマット: X.Y.Z または X.Y.Z-coderm.A.B.C（coderm部は3セグメント必須）"
+  echo "よくある誤り: coderm.0.10（×）→ coderm.0.10.0（〇）"
+  exit 1
+fi
+
 # 初回リリースの場合: upstream追従でなければ、coderm部が0.0.0ならcoderm.0.1.0を強制使用
 if [ "$initial_release" = true ] && [ "$suggested_type" != "upstream" ]; then
   if [ "$coderm_major" -eq 0 ] && [ "$coderm_minor" -eq 0 ] && [ "$coderm_patch" -eq 0 ]; then
@@ -404,6 +413,16 @@ fi
 echo ""
 echo "更新内容:"
 git diff "$version_file"
+
+# 更新後のバージョンフォーマット検証（必須）
+updated_version=$(grep -o '"version"\s*:\s*"[^"]*"' "$version_file" | head -1 | sed 's/.*: "\(.*\)".*/\1/')
+if ! echo "$updated_version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-coderm\.[0-9]+\.[0-9]+\.[0-9]+)?$'; then
+  echo "エラー: 更新後のバージョンフォーマットが不正です: $updated_version"
+  echo "期待フォーマット: X.Y.Z または X.Y.Z-coderm.A.B.C（coderm部は3セグメント必須）"
+  echo "よくある誤り: coderm.0.10（×）→ coderm.0.10.0（〇）"
+  exit 1
+fi
+echo "フォーマット検証OK: $updated_version"
 ```
 
 ### Step 5: releaseブランチの作成
@@ -427,6 +446,15 @@ echo "ブランチを作成: $branch_name"
 
 ```bash
 commit_message="chore: release v$next_version"
+
+# コミット前の最終バージョンフォーマット検証（必須）
+final_version=$(grep -o '"version"\s*:\s*"[^"]*"' "$version_file" | head -1 | sed 's/.*: "\(.*\)".*/\1/')
+if ! echo "$final_version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-coderm\.[0-9]+\.[0-9]+\.[0-9]+)?$'; then
+  echo "エラー: コミット前のバージョンフォーマットが不正です: $final_version"
+  echo "期待フォーマット: X.Y.Z または X.Y.Z-coderm.A.B.C（coderm部は3セグメント必須）"
+  echo "よくある誤り: coderm.0.10（×）→ coderm.0.10.0（〇）"
+  exit 1
+fi
 
 # バージョンファイルをステージング
 git add "$version_file"
