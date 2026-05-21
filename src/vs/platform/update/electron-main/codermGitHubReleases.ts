@@ -168,7 +168,7 @@ function isNewerRelease(currentVersion: string | undefined, release: IGitHubRele
 	// Coderm prerelease segments. The regex captures groups 1-3 as upstream
 	// semver and group 4 as the dot-separated coderm suffix (e.g. "0.10").
 	const parseVersion = (v: string) => {
-		const match = v.match(/^(\d+)\.(\d+)\.(\d+)(?:-coderm((?:\d+\.)*\d+))?/);
+		const match = v.match(/^(\d+)\.(\d+)\.(\d+)(?:-coderm\.((?:\d+\.)*\d+))?/);
 		if (!match) {
 			return { upstream: [0, 0, 0], coderm: [] as number[] };
 		}
