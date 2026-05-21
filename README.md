@@ -2,7 +2,7 @@
 
 # Coderm
 
-<!-- TODO: スクショエリア -->
+<img src="./.github/assets/workbench.png" alt="Coderm">
 
 日本語 | [English](README.en.md)
 
