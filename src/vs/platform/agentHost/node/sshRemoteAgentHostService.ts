@@ -299,13 +299,32 @@ function createWebSocketRelay(
 
 			ws.on('open', () => {
 				logService.info(`${LOG_PREFIX} WebSocket relay connected to remote agent host`);
+
+				// Send periodic WebSocket pings to keep the SSH forwarded channel
+				// alive across NAT/firewall idle timeouts.  Without this, the
+				// underlying TCP connection inside the SSH tunnel can be silently
+				// dropped by intermediate network devices after ~60 minutes of
+				// inactivity at the WebSocket layer (even though SSH-level
+				// keepalives maintain the outer connection).
+				const pingInterval = setInterval(() => {
+					if (ws.readyState === ws.OPEN) {
+						ws.ping();
+					} else {
+						clearInterval(pingInterval);
+					}
+				}, 30_000);
+				ws.on('close', () => clearInterval(pingInterval));
+
 				resolve({
 					send: (data: string) => {
 						if (ws.readyState === ws.OPEN) {
 							ws.send(data);
 						}
 					},
-					close: () => ws.close(),
+					close: () => {
+						clearInterval(pingInterval);
+						ws.close();
+					},
 				});
 			});
 
