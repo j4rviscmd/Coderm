@@ -43,6 +43,9 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	/** Holds the staged application bundle path and name when an update is ready to apply. */
 	private pendingUpdate: { stagingPath: string; appName: string } | undefined;
 
+	/** Path to the downloaded DMG file, kept between download and extraction phases. */
+	private downloadedDmgPath: string | undefined;
+
 	/**
 	 * Lazily-created directory used to store downloaded DMG files and
 	 * extracted `.app` bundles while an update is in progress.
@@ -180,9 +183,9 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	}
 
 	/**
-	 * Downloads the DMG for the available update, mounts it, extracts the
-	 * `.app` bundle to the staging directory, and transitions to the `Ready`
-	 * state so the update can be applied on the next relaunch.
+	 * Downloads the DMG for the available update and transitions to the
+	 * `Downloaded` state. Extraction is deferred to {@link doApplyUpdate}
+	 * which is triggered when the user clicks "Install".
 	 *
 	 * @param state - The current `AvailableForDownload` state containing the update metadata.
 	 */
@@ -195,19 +198,47 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 			const dmgPath = path.join(this.stagingDir, `Coderm-${update.productVersion}.dmg`);
 			await this.downloadFile(update.url!, dmgPath, update, startTime);
 
-			this.logService.info('coderm-update#doDownloadUpdate - DMG downloaded, mounting...');
+			this.logService.info('coderm-update#doDownloadUpdate - DMG downloaded');
+			this.downloadedDmgPath = dmgPath;
 			this.setState(State.Downloaded(update, true, false));
+		} catch (err) {
+			this.logService.error('coderm-update#doDownloadUpdate - error', err);
+			this.setState(State.Idle(UpdateType.Archive, String(err.message || err)));
+		}
+	}
 
-			const appPath = await this.extractAppFromDmg(dmgPath);
+	/**
+	 * Extracts the `.app` bundle from the previously downloaded DMG and
+	 * transitions to the `Ready` state. Called when the user clicks "Install".
+	 */
+	protected override async doApplyUpdate(): Promise<void> {
+		if (this.state.type !== StateType.Downloaded) {
+			return;
+		}
+
+		if (!this.downloadedDmgPath) {
+			this.logService.error('coderm-update#doApplyUpdate - no DMG path available');
+			this.setState(State.Idle(UpdateType.Archive, 'No downloaded update available'));
+			return;
+		}
+
+		const update = this.state.update;
+		this.setState(State.Updating(update, true));
+
+		try {
+			this.logService.info('coderm-update#doApplyUpdate - extracting app from DMG...');
+			const appPath = await this.extractAppFromDmg(this.downloadedDmgPath);
 			if (!appPath) {
 				this.setState(State.Idle(UpdateType.Archive, 'Failed to extract app from DMG'));
 				return;
 			}
 
 			this.pendingUpdate = { stagingPath: appPath, appName: path.basename(appPath) };
+			this.downloadedDmgPath = undefined;
+			this.logService.info('coderm-update#doApplyUpdate - update ready');
 			this.setState(State.Ready(update, true, false));
 		} catch (err) {
-			this.logService.error('coderm-update#doDownloadUpdate - error', err);
+			this.logService.error('coderm-update#doApplyUpdate - error', err);
 			this.setState(State.Idle(UpdateType.Archive, String(err.message || err)));
 		}
 	}
@@ -263,7 +294,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	 *   if mounting or extraction failed.
 	 */
 	private async extractAppFromDmg(dmgPath: string): Promise<string | undefined> {
-		const mountOutput = await this.runCommand('hdiutil', ['attach', '-nobrowse', dmgPath]);
+		const mountOutput = await this.runCommandWithTimeout('hdiutil', ['attach', '-nobrowse', dmgPath], 60_000);
 		const mountPoint = mountOutput.split('\n')
 			.map(l => l.match(/\/Volumes\/.+/)?.[0]?.trim())
 			.find(m => m);
@@ -291,7 +322,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 				process.noAsar = origNoAsar;
 			}
 
-			await this.runCommand('cp', ['-R', sourceApp, stagedApp]);
+			await this.runCommandWithTimeout('cp', ['-R', sourceApp, stagedApp], 120_000);
 
 			this.logService.info(`coderm-update#extractAppFromDmg - staged: ${stagedApp}`);
 			return stagedApp;
@@ -317,6 +348,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		}
 
 		const { stagingPath, appName } = this.pendingUpdate;
+		this.pendingUpdate = undefined; // prevent double-spawn
 
 		const currentAppPath = electron.app.getAppPath().split('.app')[0] + '.app';
 		const parentDir = path.dirname(path.dirname(currentAppPath));
@@ -364,6 +396,49 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	 */
 	protected override getUpdateType(): UpdateType {
 		return UpdateType.Archive;
+	}
+
+	/**
+	 * Like {@link runCommand} but kills the child process after `timeoutMs`
+	 * milliseconds to guard against hung commands (e.g. corrupted DMG
+	 * causing `hdiutil attach` to stall).
+	 */
+	private runCommandWithTimeout(command: string, args: string[], timeoutMs: number): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const child = spawn(command, args);
+			let stdout = '';
+			let stderr = '';
+			let settled = false;
+
+			const timer = setTimeout(() => {
+				if (!settled) {
+					settled = true;
+					child.kill();
+					reject(new Error(`${command} ${args.join(' ')} timed out after ${timeoutMs}ms`));
+				}
+			}, timeoutMs);
+
+			child.stdout.on('data', data => stdout += data.toString());
+			child.stderr.on('data', data => stderr += data.toString());
+			child.once('close', code => {
+				if (!settled) {
+					settled = true;
+					clearTimeout(timer);
+					if (code === 0) {
+						resolve(stdout);
+					} else {
+						reject(new Error(`${command} ${args.join(' ')} exited with code ${code}: ${stderr}`));
+					}
+				}
+			});
+			child.once('error', err => {
+				if (!settled) {
+					settled = true;
+					clearTimeout(timer);
+					reject(err);
+				}
+			});
+		});
 	}
 
 	/**
