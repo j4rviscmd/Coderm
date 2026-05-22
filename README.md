@@ -8,7 +8,7 @@
 
 [![Windows](https://img.shields.io/badge/Windows-Supported-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/j4rviscmd/Coderm/releases/latest/download/CodermSetup-x64.exe)
 [![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/j4rviscmd/Coderm/releases/latest/download/Coderm-arm64.dmg)
-[![Downloads](https://img.shields.io/github/downloads/j4rviscmd/Coderm/total?style=for-the-badge&logo=github)](https://github.com/j4rviscmd/Coderm/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/j4rviscmd/Coderm/total?style=for-the-badge&logo=github)](https://github.com/j4rviscmd/Coderm/releases/latest)<br/>
 [![Latest Release](https://img.shields.io/github/v/release/j4rviscmd/Coderm?style=for-the-badge&label=Latest&logo=github)](https://github.com/j4rviscmd/Coderm/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/j4rviscmd/Coderm/ci.yml?style=for-the-badge&label=CI&logo=githubactions)](https://github.com/j4rviscmd/Coderm/actions)
 [![License](https://img.shields.io/badge/License-MIT-018FF5?style=for-the-badge&logo=opensourceinitiative)](LICENSE.txt)
