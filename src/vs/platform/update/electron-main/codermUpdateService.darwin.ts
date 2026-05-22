@@ -71,7 +71,11 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		@IMeteredConnectionService meteredConnectionService: IMeteredConnectionService,
 		@IFileService private readonly fileService: IFileService,
 	) {
-		super(lifecycleMainService, configurationService, environmentMainService, requestService, logService, productService, telemetryService, applicationStorageMainService, meteredConnectionService, true);
+		// supportsUpdateOverwrite=false: The overwrite check mechanism uses isLatestVersion()
+		// which requires a VSCode update server (responds with 204 for no-update). Since Coderm
+		// uses GitHub Releases API with a placeholder URL, the overwrite check would always
+		// return false positives (200 HTML response != 204), causing Ready state to be reset.
+		super(lifecycleMainService, configurationService, environmentMainService, requestService, logService, productService, telemetryService, applicationStorageMainService, meteredConnectionService, false);
 
 		lifecycleMainService.setRelaunchHandler(this);
 	}
@@ -168,6 +172,13 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 			process.arch,
 			CancellationToken.None
 		).then(update => {
+			// Guard: if state has advanced past CheckingForUpdates (e.g. user already
+			// downloaded and installed while this check was in flight), do not overwrite.
+			if (this.state.type !== StateType.CheckingForUpdates) {
+				this.logService.info(`coderm-update#doCheckForUpdates - stale response ignored (current state: ${this.state.type})`);
+				return;
+			}
+
 			if (!update || !update.url || !update.productVersion) {
 				this.setState(State.Idle(UpdateType.Archive, undefined, explicit || undefined));
 			} else {
@@ -178,7 +189,10 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 			this.telemetryService.publicLog2<{ messageHash: string }, UpdateErrorClassification>('update:error', { messageHash: String(hash(String(err))) });
 			this.logService.error('coderm-update#doCheckForUpdates - error', err);
 			const message: string | undefined = explicit ? (err.message || err) : undefined;
-			this.setState(State.Idle(UpdateType.Archive, message));
+			// Only update state if we're still in CheckingForUpdates
+			if (this.state.type === StateType.CheckingForUpdates) {
+				this.setState(State.Idle(UpdateType.Archive, message));
+			}
 		});
 	}
 
@@ -213,6 +227,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	 */
 	protected override async doApplyUpdate(): Promise<void> {
 		if (this.state.type !== StateType.Downloaded) {
+			this.logService.warn(`coderm-update#doApplyUpdate - called in wrong state: ${this.state.type} (expected: Downloaded)`);
 			return;
 		}
 
@@ -223,19 +238,20 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		}
 
 		const update = this.state.update;
+		this.logService.info(`coderm-update#doApplyUpdate - starting extraction from: ${this.downloadedDmgPath}`);
 		this.setState(State.Updating(update, true));
 
 		try {
-			this.logService.info('coderm-update#doApplyUpdate - extracting app from DMG...');
 			const appPath = await this.extractAppFromDmg(this.downloadedDmgPath);
 			if (!appPath) {
+				this.logService.error('coderm-update#doApplyUpdate - extractAppFromDmg returned undefined');
 				this.setState(State.Idle(UpdateType.Archive, 'Failed to extract app from DMG'));
 				return;
 			}
 
 			this.pendingUpdate = { stagingPath: appPath, appName: path.basename(appPath) };
 			this.downloadedDmgPath = undefined;
-			this.logService.info('coderm-update#doApplyUpdate - update ready');
+			this.logService.info(`coderm-update#doApplyUpdate - update ready: ${appPath}`);
 			this.setState(State.Ready(update, true, false));
 		} catch (err) {
 			this.logService.error('coderm-update#doApplyUpdate - error', err);
@@ -294,23 +310,45 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	 *   if mounting or extraction failed.
 	 */
 	private async extractAppFromDmg(dmgPath: string): Promise<string | undefined> {
-		const mountOutput = await this.runCommandWithTimeout('hdiutil', ['attach', '-nobrowse', dmgPath], 60_000);
+		this.logService.trace(`coderm-update#extractAppFromDmg - dmgPath: ${dmgPath}`);
+
+		// Step 1: Mount DMG
+		let mountOutput: string;
+		try {
+			mountOutput = await this.runCommandWithTimeout('hdiutil', ['attach', '-nobrowse', dmgPath], 60_000);
+		} catch (err) {
+			this.logService.error('coderm-update#extractAppFromDmg - hdiutil attach failed', err);
+			return undefined;
+		}
+		this.logService.trace(`coderm-update#extractAppFromDmg - hdiutil output: ${mountOutput.replace(/\n/g, ' | ')}`);
+
+		// Step 2: Parse mount point
 		const mountPoint = mountOutput.split('\n')
 			.map(l => l.match(/\/Volumes\/.+/)?.[0]?.trim())
 			.find(m => m);
 		if (!mountPoint) {
-			this.logService.error('coderm-update#extractAppFromDmg - could not find mount point');
+			this.logService.error(`coderm-update#extractAppFromDmg - could not parse mount point from output: ${JSON.stringify(mountOutput.split('\n'))}`);
 			return undefined;
 		}
 
 		try {
-			const entries = await this.runCommand('ls', [mountPoint]);
-			const appName = entries.split('\n').find(e => e.endsWith('.app'));
-			if (!appName || !/^[\w\s.\-]+\.app$/.test(appName)) {
-				this.logService.error('coderm-update#extractAppFromDmg - no valid .app found in DMG');
+			// Step 3: List DMG contents
+			let entries: string;
+			try {
+				entries = await this.runCommand('ls', [mountPoint]);
+			} catch (err) {
+				this.logService.error('coderm-update#extractAppFromDmg - ls failed', err);
 				return undefined;
 			}
 
+			// Step 4: Find and validate .app name
+			const appName = entries.split('\n').find(e => e.endsWith('.app'));
+			if (!appName || !/^[\w\s.\-]+\.app$/.test(appName)) {
+				this.logService.error(`coderm-update#extractAppFromDmg - no valid .app found in DMG. entries: ${JSON.stringify(entries.split('\n').filter(e => e))}`);
+				return undefined;
+			}
+
+			// Step 5: Remove old staged app and copy new one
 			const sourceApp = path.join(mountPoint, appName);
 			const stagedApp = path.join(this.stagingDir, appName);
 
@@ -353,11 +391,16 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		const currentAppPath = electron.app.getAppPath().split('.app')[0] + '.app';
 		const parentDir = path.dirname(path.dirname(currentAppPath));
 		const targetAppPath = path.join(parentDir, appName);
+		const currentPid = process.pid;
 
 		const scriptPath = path.join(this.stagingDir, 'apply-update.sh');
 		const script = [
 			'#!/bin/bash',
-			'while pgrep -f "Coderm" > /dev/null 2>&1; do',
+			// Wait for the specific Coderm process (that spawned this script) to exit.
+			// Using kill -0 against the PID avoids false matches from dev tools,
+			// esbuild watchers, tmux sessions, or crashpad handlers whose command lines
+			// also contain "Coderm".
+			`while kill -0 ${currentPid} 2>/dev/null; do`,
 			'\tsleep 0.5',
 			'done',
 			'sleep 1',
@@ -369,7 +412,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		].join('\n') + '\n';
 		writeFileSync(scriptPath, script, { mode: 0o755 });
 
-		this.logService.info(`coderm-update#applyDmgUpdateOnQuit - launching update script: ${scriptPath}`);
+		this.logService.info(`coderm-update#applyDmgUpdateOnQuit - launching update script: ${scriptPath} (waiting for PID ${currentPid})`);
 		spawn('/bin/bash', [scriptPath], {
 			detached: true,
 			stdio: 'ignore',

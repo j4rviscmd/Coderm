@@ -83,7 +83,11 @@ export class CodermWin32UpdateService extends AbstractUpdateService implements I
 		@IApplicationStorageMainService applicationStorageMainService: IApplicationStorageMainService,
 		@IMeteredConnectionService meteredConnectionService: IMeteredConnectionService,
 	) {
-		super(lifecycleMainService, configurationService, environmentMainService, requestService, logService, productService, telemetryService, applicationStorageMainService, meteredConnectionService, true);
+		// supportsUpdateOverwrite=false: The overwrite check mechanism uses isLatestVersion()
+		// which requires a VSCode update server (responds with 204 for no-update). Since Coderm
+		// uses GitHub Releases API with a placeholder URL, the overwrite check would always
+		// return false positives (200 HTML response != 204), causing Ready state to be reset.
+		super(lifecycleMainService, configurationService, environmentMainService, requestService, logService, productService, telemetryService, applicationStorageMainService, meteredConnectionService, false);
 
 		lifecycleMainService.setRelaunchHandler(this);
 	}
@@ -125,6 +129,13 @@ export class CodermWin32UpdateService extends AbstractUpdateService implements I
 			this.updateCancellationTokenSource?.token ?? CancellationToken.None
 		).then(update => {
 			const updateType = getUpdateType();
+
+			// Guard: if state has advanced past CheckingForUpdates (e.g. user already
+			// downloaded and installed while this check was in flight), do not overwrite.
+			if (this.state.type !== StateType.CheckingForUpdates && this.state.type !== StateType.Overwriting) {
+				this.logService.info(`coderm-update#doCheckForUpdates - stale response ignored (current state: ${this.state.type})`);
+				return;
+			}
 
 			if (!update || !update.url || !update.productVersion) {
 				if (this.state.type === StateType.Overwriting) {
