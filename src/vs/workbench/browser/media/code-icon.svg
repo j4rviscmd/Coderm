@@ -1,1 +1,42 @@
-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><style>.st0{fill:#f6f6f6;fill-opacity:0}.st1{fill:#fff}.st2{fill:#167abf}</style><path class="st0" d="M1024 1024H0V0h1024v1024z"/><path class="st1" d="M1024 85.333v853.333H0V85.333h1024z"/><path class="st2" d="M0 85.333h298.667v853.333H0V85.333zm1024 0v853.333H384V85.333h640zm-554.667 160h341.333v-64H469.333v64zm341.334 533.334H469.333v64h341.333l.001-64zm128-149.334H597.333v64h341.333l.001-64zm0-149.333H597.333v64h341.333l.001-64zm0-149.333H597.333v64h341.333l.001-64z"/></svg>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Coderm App Icon - Geometric C (Final) -->
+  <!-- "C" formed by angle brackets with terminal cursor accent -->
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e1e2e"/>
+      <stop offset="100%" style="stop-color:#11111b"/>
+    </linearGradient>
+    <linearGradient id="cShape" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#89dceb"/>
+      <stop offset="50%" style="stop-color:#74c7ec"/>
+      <stop offset="100%" style="stop-color:#89b4fa"/>
+    </linearGradient>
+    <linearGradient id="cursor" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#a6e3a1"/>
+      <stop offset="100%" style="stop-color:#94e2d5"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background rounded square -->
+  <rect x="64" y="64" width="896" height="896" rx="192" ry="192" fill="url(#bg)"/>
+  
+  <!-- Subtle inner shadow/border -->
+  <rect x="64" y="64" width="896" height="896" rx="192" ry="192" 
+        fill="none" stroke="#313244" stroke-width="4"/>
+  
+  <!-- The "C" letter shape - clean geometric construction -->
+  <!-- Using a single path for the C shape: top arm, vertical spine, bottom arm -->
+  <path d="M 640 260 L 380 260 
+           C 330 260, 290 300, 290 350 
+           L 290 674 
+           C 290 724, 330 764, 380 764 
+           L 640 764" 
+        fill="none" stroke="url(#cShape)" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Terminal cursor block (inside the C opening) -->
+  <rect x="490" y="462" width="12" height="100" rx="6" fill="url(#cursor)"/>
+  
+  <!-- Terminal text line hints (subtle) -->
+  <line x1="530" y1="490" x2="660" y2="490" stroke="url(#cursor)" stroke-width="12" stroke-linecap="round" opacity="0.4"/>
+  <line x1="530" y1="535" x2="610" y2="535" stroke="url(#cursor)" stroke-width="12" stroke-linecap="round" opacity="0.25"/>
+</svg>
