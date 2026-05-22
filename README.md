@@ -63,6 +63,7 @@
 | `coderm.terminal.horizontalPadding`              | `number`  | `20`       | ターミナルの水平パディング（px, 0–100）          |
 | `coderm.quickOpen.includeTerminals`              | `boolean` | `true`     | Quick Openにターミナルエディタを含める           |
 | `coderm.updateDownloadProgress.enabled`          | `boolean` | `true`     | アップデートダウンロード時に進捗通知を表示       |
+| `coderm.terminal.closeEmptyPaneOnKill`           | `boolean` | `true`     | ターミナルkill時に空ペインを閉じてフォーカス復帰 |
 
 ---
 
