@@ -1032,6 +1032,8 @@ export class TestEditorGroupAccessor implements IEditorGroupsView {
 
 	onDidChangeEditorPartOptions = Event.None;
 	onDidVisibilityChange = Event.None;
+	onDidAddGroup = Event.None;
+	onDidRemoveGroup = Event.None;
 
 	getGroup(identifier: number): IEditorGroupView | undefined { throw new Error('Method not implemented.'); }
 	getGroups(order: GroupsOrder): IEditorGroupView[] { throw new Error('Method not implemented.'); }
@@ -1797,6 +1799,9 @@ export class TestWorkspacesService implements IWorkspacesService {
 	async getWorkspaceIdentifier(workspacePath: URI): Promise<IWorkspaceIdentifier> { throw new Error('Method not implemented.'); }
 }
 
+/**
+ * No-op {@link ITerminalInstanceService} stub for workbench tests.
+ */
 export class TestTerminalInstanceService implements ITerminalInstanceService {
 	onDidCreateInstance = Event.None;
 	onDidRegisterBackend = Event.None;
@@ -1810,6 +1815,12 @@ export class TestTerminalInstanceService implements ITerminalInstanceService {
 	getRegisteredBackends(): IterableIterator<ITerminalBackend> { throw new Error('Method not implemented.'); }
 }
 
+/**
+ * No-op {@link ITerminalEditorService} stub for workbench tests.
+ * Every method throws `"Method not implemented."` — only the events
+ * are wired to `Event.None` so consumers that subscribe during setup
+ * do not explode.
+ */
 export class TestTerminalEditorService implements ITerminalEditorService {
 	_serviceBrand: undefined;
 	activeInstance: ITerminalInstance | undefined;
@@ -1836,6 +1847,10 @@ export class TestTerminalEditorService implements ITerminalEditorService {
 	findPrevious(): void { throw new Error('Method not implemented.'); }
 }
 
+/**
+ * No-op {@link ITerminalGroupService} stub for workbench tests.
+ * Mirrors the pattern used by other `Test*Service` classes in this file.
+ */
 export class TestTerminalGroupService implements ITerminalGroupService {
 	_serviceBrand: undefined;
 	activeInstance: ITerminalInstance | undefined;
@@ -1883,6 +1898,9 @@ export class TestTerminalGroupService implements ITerminalGroupService {
 	updateVisibility(): void { throw new Error('Method not implemented.'); }
 }
 
+/**
+ * No-op {@link ITerminalProfileService} stub for workbench tests.
+ */
 export class TestTerminalProfileService implements ITerminalProfileService {
 	_serviceBrand: undefined;
 	availableProfiles: ITerminalProfile[] = [];
@@ -1901,6 +1919,10 @@ export class TestTerminalProfileService implements ITerminalProfileService {
 	overrideDefaultProfile(extensionIdentifier: string, id: string): IDisposable { return Disposable.None; }
 }
 
+/**
+ * No-op {@link ITerminalProfileResolverService} stub for workbench tests.
+ * Returns minimal defaults so callers that await profile resolution succeed.
+ */
 export class TestTerminalProfileResolverService implements ITerminalProfileResolverService {
 	_serviceBrand: undefined;
 	defaultProfileName = '';
@@ -1916,6 +1938,10 @@ export class TestTerminalProfileResolverService implements ITerminalProfileResol
 	createProfileFromShellAndShellArgs(shell?: unknown, shellArgs?: unknown): Promise<string | ITerminalProfile> { throw new Error('Method not implemented.'); }
 }
 
+/**
+ * Test-friendly subclass of {@link TerminalConfigurationService} that
+ * exposes the internal font-metrics and config setters for unit tests.
+ */
 export class TestTerminalConfigurationService extends TerminalConfigurationService {
 	get fontMetrics() { return this._fontMetrics; }
 	// eslint-disable-next-line local/code-no-any-casts

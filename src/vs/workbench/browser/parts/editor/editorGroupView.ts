@@ -1654,7 +1654,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 			this._onDidActiveEditorChange.fire({ editor: undefined });
 
 			// Remove empty group if we should
-			if (closeEmptyGroup) {
+			if (closeEmptyGroup && this.groupsView.getGroup(this.id)) {
 				this.groupsView.removeGroup(this, preserveFocus);
 			}
 		}

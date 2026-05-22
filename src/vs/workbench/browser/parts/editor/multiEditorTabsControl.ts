@@ -188,6 +188,10 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 		this._register(this.editorService.onDidVisibleEditorsChange(() => {
 			this.editorGroupIndexScheduler.value = scheduleAtNextAnimationFrame(getWindow(this.parent), () => this.updateEditorGroupIndex());
 		}));
+
+		// React to group add/remove to update group index badge (Coderm)
+		this._register(this.groupsView.onDidRemoveGroup(() => this.updateEditorGroupIndex()));
+		this._register(this.groupsView.onDidAddGroup(() => this.updateEditorGroupIndex()));
 	}
 
 	protected override create(parent: HTMLElement): HTMLElement {
