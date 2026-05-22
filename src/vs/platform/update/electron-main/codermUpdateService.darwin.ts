@@ -389,7 +389,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		this.pendingUpdate = undefined; // prevent double-spawn
 
 		const currentAppPath = electron.app.getAppPath().split('.app')[0] + '.app';
-		const parentDir = path.dirname(path.dirname(currentAppPath));
+		const parentDir = path.dirname(currentAppPath);
 		const targetAppPath = path.join(parentDir, appName);
 		const currentPid = process.pid;
 
