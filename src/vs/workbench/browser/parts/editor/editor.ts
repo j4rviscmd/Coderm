@@ -223,6 +223,9 @@ export interface IEditorGroupsView {
 
 	readonly onDidVisibilityChange: Event<boolean>;
 
+	readonly onDidAddGroup: Event<IEditorGroupView>;
+	readonly onDidRemoveGroup: Event<IEditorGroupView>;
+
 	getGroup(identifier: GroupIdentifier): IEditorGroupView | undefined;
 	getGroups(order: GroupsOrder): IEditorGroupView[];
 
