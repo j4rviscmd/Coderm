@@ -21,16 +21,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
-
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: npm
 
-      - run: npm ci
+      - uses: actions/cache@v4
+        id: cache-nm-eslint
+        with:
+          path: |
+            node_modules
+            .eslintcache
+          key: nm-eslint-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (full)
+        if: steps.cache-nm-eslint.outputs.cache-hit != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+          npm ci
+
+      - name: Install sub-directory dependencies
+        if: steps.cache-nm-eslint.outputs.cache-hit == 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+          rm -f node_modules/.postinstall-state
+          node --experimental-strip-types build/npm/postinstall.ts
 
       - run: npm run eslint
 
