@@ -18,7 +18,7 @@ interface EslintAction {
 }
 
 export default function eslint(action: EslintAction) {
-	const linter = new ESLint({});
+	const linter = new ESLint({ cache: true, cacheLocation: '.eslintcache' });
 	const formatter = linter.loadFormatter('compact');
 
 	const results: ESLintResults = Object.assign([], { errorCount: 0, warningCount: 0 });
@@ -68,6 +68,17 @@ export default function eslint(action: EslintAction) {
 		});
 }
 
+/**
+ * Creates a `Transform` stream configured for object mode with the given
+ * transform and flush callbacks.
+ *
+ * This is a thin convenience wrapper around `new Transform(...)` to reduce
+ * boilerplate when building gulp-style vinyl-file streams.
+ *
+ * @param transform - The per-chunk transform callback.
+ * @param flush - The end-of-stream flush callback.
+ * @returns A `Transform` stream operating in object mode.
+ */
 function createTransform(
 	transform: TransformOptions['transform'],
 	flush: TransformOptions['flush']
