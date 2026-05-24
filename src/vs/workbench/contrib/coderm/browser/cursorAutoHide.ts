@@ -24,6 +24,8 @@ const CodermSettings = {
 	ENABLED: 'coderm.cursorAutoHide.enabled',
 	/** Inactivity delay in milliseconds before the cursor is hidden. */
 	DELAY: 'coderm.cursorAutoHide.delay',
+	/** Whether to suppress mouse-triggered editor hover when cursorAutoHide is active. */
+	SUPPRESS_HOVER: 'coderm.cursorAutoHide.suppressHover',
 };
 
 Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).registerConfiguration({
@@ -46,6 +48,12 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 			scope: ConfigurationScope.APPLICATION,
 			description: localize('coderm.cursorAutoHide.delay', "Controls the delay in milliseconds before the mouse cursor is automatically hidden after inactivity."),
 		},
+		[CodermSettings.SUPPRESS_HOVER]: {
+			type: 'boolean',
+			default: true,
+			scope: ConfigurationScope.APPLICATION,
+			description: localize('coderm.cursorAutoHide.suppressHover', "Controls whether mouse-triggered editor hover tooltips are suppressed while cursor auto-hide is active. Keyboard-triggered hover (e.g. Ctrl+K Ctrl+I) still works."),
+		},
 	},
 });
 
@@ -55,6 +63,8 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 
 /** CSS class applied to `<body>` to hide the mouse cursor via `cursor: none !important`. */
 const CURSOR_HIDDEN_CLASS = 'cursor-auto-hidden';
+/** Persistent body class when cursorAutoHide is enabled AND suppressHover is true. */
+export const HOVER_SUPPRESSED_CLASS = 'coderm-hover-suppressed';
 
 /**
  * Workbench contribution that automatically hides the mouse cursor after a
@@ -68,6 +78,7 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 
 	private _enabled: boolean = true;
 	private _delay: number = 3000;
+	private _suppressHover: boolean = true;
 	private _timer: ReturnType<typeof setTimeout> | undefined;
 	private _isHidden: boolean = false;
 	/** Whether a context menu is currently open; prevents the timer from restarting while visible. */
@@ -98,6 +109,9 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 			if (e.affectsConfiguration(CodermSettings.DELAY)) {
 				this._onDidChangeDelay();
 			}
+			if (e.affectsConfiguration(CodermSettings.SUPPRESS_HOVER)) {
+				this._onDidChangeSuppressHover();
+			}
 		}));
 
 		// Pause cursor hiding while a context menu is open
@@ -115,18 +129,21 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 
 		// Initialize
 		this._readConfiguration();
+		this._updateHoverSuppressedClass();
 		this._setupListeners();
 	}
 
-	/** Reads the current `enabled` and `delay` values from configuration. */
+	/** Reads the current `enabled`, `delay`, and `suppressHover` values from configuration. */
 	private _readConfiguration(): void {
 		this._enabled = this.configurationService.getValue<boolean>(CodermSettings.ENABLED) ?? true;
 		this._delay = this.configurationService.getValue<number>(CodermSettings.DELAY) ?? 3000;
+		this._suppressHover = this.configurationService.getValue<boolean>(CodermSettings.SUPPRESS_HOVER) ?? true;
 	}
 
 	/** Handles runtime changes to the `enabled` setting. Shows or resets the cursor accordingly. */
 	private _onDidChangeEnabled(): void {
 		this._enabled = this.configurationService.getValue<boolean>(CodermSettings.ENABLED) ?? true;
+		this._updateHoverSuppressedClass();
 		if (!this._enabled) {
 			this._showCursor();
 			this._clearTimer();
@@ -140,6 +157,21 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 		this._delay = this.configurationService.getValue<number>(CodermSettings.DELAY) ?? 3000;
 		if (this._enabled) {
 			this._resetTimer();
+		}
+	}
+
+	/** Handles runtime changes to the `suppressHover` setting. */
+	private _onDidChangeSuppressHover(): void {
+		this._suppressHover = this.configurationService.getValue<boolean>(CodermSettings.SUPPRESS_HOVER) ?? true;
+		this._updateHoverSuppressedClass();
+	}
+
+	/** Adds or removes the hover-suppressed body class based on current settings. */
+	private _updateHoverSuppressedClass(): void {
+		if (this._enabled && this._suppressHover) {
+			mainWindow.document.body.classList.add(HOVER_SUPPRESSED_CLASS);
+		} else {
+			mainWindow.document.body.classList.remove(HOVER_SUPPRESSED_CLASS);
 		}
 	}
 
@@ -214,6 +246,7 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 	override dispose(): void {
 		this._clearTimer();
 		this._showCursor();
+		mainWindow.document.body.classList.remove(HOVER_SUPPRESSED_CLASS);
 		super.dispose();
 	}
 }

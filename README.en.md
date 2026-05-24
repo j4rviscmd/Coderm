@@ -56,6 +56,7 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.activePaneBorder.width`                  | `number`  | `1`     | Border thickness (px, 1–5)                        |
 | `coderm.cursorAutoHide.enabled`                  | `boolean` | `true`  | Auto-hide mouse cursor after inactivity           |
 | `coderm.cursorAutoHide.delay`                    | `number`  | `3000`  | Delay before hiding cursor (ms)                   |
+| `coderm.cursorAutoHide.suppressHover`            | `boolean` | `true`  | Suppress editor hover when cursor is auto-hidden  |
 | `coderm.workbench.editor.editorGroupIndexInTab`  | `boolean` | `false` | Show editor group index `[N]` in tab              |
 | `coderm.workbench.editor.autoMaximizeOnFocus`    | `boolean` | `true`  | Control auto-maximize when focusing smallest pane |
 | `coderm.workbench.editor.preventNewGroupOnFocus` | `boolean` | `false` | Prevent creating new editor group on focus        |
