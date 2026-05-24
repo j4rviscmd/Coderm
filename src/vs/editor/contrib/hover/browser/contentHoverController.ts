@@ -7,6 +7,7 @@ import { DECREASE_HOVER_VERBOSITY_ACTION_ID, INCREASE_HOVER_VERBOSITY_ACTION_ID,
 import { IKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
 import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
 import { ICodeEditor, IEditorMouseEvent, IPartialEditorMouseEvent } from '../../../browser/editorBrowser.js';
+import { mainWindow } from '../../../../base/browser/window.js';
 import { ConfigurationChangedEvent, EditorOption } from '../../../common/config/editorOptions.js';
 import { Range } from '../../../common/core/range.js';
 import { IEditorContribution, IScrollEvent } from '../../../common/editorCommon.js';
@@ -249,6 +250,7 @@ export class ContentHoverController extends Disposable implements IEditorContrib
 	}
 
 	private _reactToEditorMouseMove(mouseEvent: IEditorMouseEvent): void {
+		if (mainWindow.document.body.classList.contains('coderm-hover-suppressed')) { return; }
 		if (shouldShowHover(
 			this._hoverSettings.enabled,
 			this._editor.getOption(EditorOption.multiCursorModifier),

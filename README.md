@@ -56,6 +56,7 @@
 | `coderm.activePaneBorder.width`                  | `number`  | `1`        | 境界線の太さ（px, 1–5）                          |
 | `coderm.cursorAutoHide.enabled`                  | `boolean` | `true`     | 無操作時にマウスカーソルを自動的に非表示にする   |
 | `coderm.cursorAutoHide.delay`                    | `number`  | `3000`     | カーソル非表示までの遅延（ms）                   |
+| `coderm.cursorAutoHide.suppressHover`            | `boolean` | `true`     | カーソル非表示時にエディタhoverを抑制する        |
 | `coderm.workbench.editor.editorGroupIndexInTab`  | `boolean` | `false`    | タブにエディタグループ番号`[N]`を表示            |
 | `coderm.workbench.editor.autoMaximizeOnFocus`    | `boolean` | `true`     | 最小ペインにフォーカス時の自動最大化を制御       |
 | `coderm.workbench.editor.preventNewGroupOnFocus` | `boolean` | `false`    | フォーカス時に新しいエディタグループの作成を抑制 |
