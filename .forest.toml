@@ -1,0 +1,6 @@
+[start]
+commands = ["npm install"]
+share = ["node_modules", ".build/builtInExtensions", "out", ".mcp.json"]
+
+[finish]
+commands = ["npm install"]
