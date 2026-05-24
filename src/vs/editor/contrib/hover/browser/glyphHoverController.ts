@@ -7,6 +7,7 @@ import { IKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
 import { isModifierKey } from '../../../../base/common/keyCodes.js';
 import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
 import { ICodeEditor, IEditorMouseEvent, IPartialEditorMouseEvent } from '../../../browser/editorBrowser.js';
+import { mainWindow } from '../../../../base/browser/window.js';
 import { ConfigurationChangedEvent, EditorOption } from '../../../common/config/editorOptions.js';
 import { IEditorContribution, IScrollEvent } from '../../../common/editorCommon.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
@@ -173,6 +174,7 @@ export class GlyphHoverController extends Disposable implements IEditorContribut
 
 	private _reactToEditorMouseMove(mouseEvent: IEditorMouseEvent | undefined): void {
 
+		if (mainWindow.document.body.classList.contains('coderm-hover-suppressed')) { return; }
 		if (!mouseEvent) {
 			return;
 		}
