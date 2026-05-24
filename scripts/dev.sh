@@ -182,7 +182,7 @@ fi
 
 # Wait for initial esbuild transpile to complete
 echo "[dev] Waiting for initial transpile..."
-TIMEOUT=120  # 2 minutes max
+TIMEOUT=300  # 5 minutes max
 START_TIME=$(date +%s)
 READY=false
 while [ "$READY" = false ]; do

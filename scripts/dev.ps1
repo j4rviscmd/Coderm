@@ -150,7 +150,7 @@ try {
 
     # Wait for initial esbuild transpile to complete
     Write-Host '[dev] Waiting for initial transpile...' -ForegroundColor Cyan
-    $timeout = 120  # 2 minutes max
+    $timeout = 300  # 5 minutes max
     $startTime = Get-Date
     $ready = $false
     while (-not $ready) {
