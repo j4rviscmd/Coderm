@@ -1,9 +1,12 @@
 # CI workflow: ESLint + compile check on every PR targeting main.
+# Also runs on push to main to warm caches for subsequent PRs.
 # ci-gate aggregates all job results into a single required status check.
 name: CI
 
 on:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
 
 concurrency:
@@ -12,6 +15,9 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  NATIVE_BUILD_DEPS: build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
 
 jobs:
   eslint:
@@ -38,13 +44,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+          sudo apt-get update && sudo apt-get install -y ${{ env.NATIVE_BUILD_DEPS }}
           npm ci
 
       - name: Install sub-directory dependencies
         if: steps.cache-nm-eslint.outputs.cache-hit == 'true'
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+          sudo apt-get update && sudo apt-get install -y ${{ env.NATIVE_BUILD_DEPS }}
           rm -f node_modules/.postinstall-state
           node --experimental-strip-types build/npm/postinstall.ts
 
@@ -72,13 +78,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+          sudo apt-get update && sudo apt-get install -y ${{ env.NATIVE_BUILD_DEPS }}
           npm ci
 
       - name: Install sub-directory dependencies
         if: steps.cache-nm.outputs.cache-hit == 'true'
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libkrb5-dev
+          sudo apt-get update && sudo apt-get install -y ${{ env.NATIVE_BUILD_DEPS }}
           rm -f node_modules/.postinstall-state
           node --experimental-strip-types build/npm/postinstall.ts
 
