@@ -6,6 +6,7 @@
 import { mainWindow } from '../../../../base/browser/window.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
 import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
 import { localize } from '../../../../nls.js';
 import { addDisposableListener } from '../../../../base/browser/dom.js';
@@ -69,12 +70,15 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 	private _delay: number = 3000;
 	private _timer: ReturnType<typeof setTimeout> | undefined;
 	private _isHidden: boolean = false;
+	/** Whether a context menu is currently open; prevents the timer from restarting while visible. */
+	private _contextMenuVisible: boolean = false;
 
 	/**
 	 * @param configurationService - Provides access to Coderm settings for enabled/delay values.
 	 */
 	constructor(
 		@IConfigurationService private readonly configurationService: IConfigurationService,
+		@IContextMenuService contextMenuService: IContextMenuService,
 	) {
 		super();
 
@@ -93,6 +97,19 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 			}
 			if (e.affectsConfiguration(CodermSettings.DELAY)) {
 				this._onDidChangeDelay();
+			}
+		}));
+
+		// Pause cursor hiding while a context menu is open
+		this._store.add(contextMenuService.onDidShowContextMenu(() => {
+			this._contextMenuVisible = true;
+			this._showCursor();
+			this._clearTimer();
+		}));
+		this._store.add(contextMenuService.onDidHideContextMenu(() => {
+			this._contextMenuVisible = false;
+			if (this._enabled) {
+				this._resetTimer();
 			}
 		}));
 
@@ -162,6 +179,9 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 
 	/** Clears any pending timer and starts a new one with the current delay. */
 	private _resetTimer(): void {
+		if (this._contextMenuVisible) {
+			return;
+		}
 		this._clearTimer();
 		this._timer = setTimeout(() => {
 			this._hideCursor();
@@ -170,10 +190,8 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 
 	/** Cancels the pending inactivity timer if one is active. */
 	private _clearTimer(): void {
-		if (this._timer !== undefined) {
-			clearTimeout(this._timer);
-			this._timer = undefined;
-		}
+		clearTimeout(this._timer);
+		this._timer = undefined;
 	}
 
 	/** Adds the CSS class that hides the cursor, if not already hidden. */
