@@ -115,8 +115,9 @@ TaskCreate:
 TaskCreate:
 - subject: バージョン管理ファイルの更新
 - description: |
-  package.jsonのバージョンを更新
+  package.jsonとpackage-lock.jsonのバージョンを更新
   - sedコマンドで正規表現を使用してバージョンを置換（-coderm.X.Y.Z形式対応）
+  - package-lock.json（ルート・extensions/copilot）のバージョン参照も更新
   - git diff で更新内容を確認
 - activeForm: バージョンファイルを更新中
 - addBlockedBy: [タスク3の実際のID]
@@ -433,6 +434,17 @@ if ! echo "$updated_version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-coderm\.[0-9]+
   exit 1
 fi
 echo "フォーマット検証OK: $updated_version"
+
+# package-lock.jsonのバージョン参照も更新
+lock_files=("package-lock.json" "extensions/copilot/package-lock.json")
+
+for lock_file in "${lock_files[@]}"; do
+  if [ -f "$lock_file" ]; then
+    sed -i '' "s/${current_version}/${next_version}/g" "$lock_file"
+    echo "バージョンを更新: $lock_file"
+    echo "  $current_version → $next_version"
+  fi
+done
 ```
 
 ### Step 5: releaseブランチの作成
@@ -466,8 +478,11 @@ if ! echo "$final_version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-coderm\.[0-9]+\.
   exit 1
 fi
 
-# バージョンファイルをステージング
-git add "$version_file"
+# バージョンファイルとpackage-lock.jsonをステージング
+git add "$version_file" package-lock.json
+if [ -f "extensions/copilot/package-lock.json" ]; then
+  git add extensions/copilot/package-lock.json
+fi
 
 # upstream追従等でバージョン変更がない場合は空コミットを許可（通常発生しないが安全策）
 if git diff --cached --quiet; then
@@ -624,7 +639,7 @@ Codermはupstream（VS Code）のforkであり、独自のバージョニング�
 
 ### バージョンファイル
 
-Codermは `package.json` の `version` フィールドを唯一のsource of truthとして使用します。
+Codermは `package.json` の `version` フィールドを唯一のsource of truthとして使用します。リリース時には `package-lock.json`（ルート）および `extensions/copilot/package-lock.json` のバージョン参照も同期して更新します。
 package.jsonの`version`に`-coderm.X.Y.Z`プレリリース識別子を含めることで、バージョン管理をpackage.jsonで一元化しています。ビルド時に `quality="coderm"` に基づいて `-coderm` サフィックスが付加され、`product.json#version` に書き込まれます（二重付加を防止するロジックが`gulpfile.vscode.ts`に実装済み）。
 
 ### CI/CDパイプライン（release.yml）
