@@ -1,6 +1,9 @@
 ---
 name: sync-upstream
-description: microsoft/vscodeのmainブランチからの変更取り込みを行う。upstreamをfetch・mergeし、コンフリクトを1件ずつ解決した後、/releaseスキルを自動発動してupstream追従リリースを作成する
+description: >-
+  microsoft/vscodeのmainブランチからの変更取り込みを行う。upstreamをfetch・mergeし、
+  コンフリクトを1件ずつ解決した後、coderm版バージョニング（キャリーオーバー）を行い、
+  PRを作成してmainにマージする。マージ後はrelease.ymlが自動的にビルド・リリースを実行する。
 model: opus
 disable-model-invocation: true
 ---
@@ -10,12 +13,13 @@ disable-model-invocation: true
 ## スキル概要
 
 microsoft/vscode の main ブランチから最新の変更を取り込み、コンフリクトを解決し、
-upstream追従リリースを作成する一連のワークフローを実行します。
+coderm版バージョニング（キャリーオーバー）を行った後、PR経由でmainにマージする一連のワークフローを実行します。
+マージ後は release.yml が自動的にタグ生成・ビルド・GitHub Release作成を行います。
 
-**基本フロー:** 前提条件チェック → fetch & merge → コンフリクト解決（1件ずつ報告） → ビルド検証 → /release スキル発動
+**基本フロー:** 前提条件チェック → sync ブランチ作成 → fetch & merge → コンフリクト解決（1件ずつ報告） → ビルド検証 → coderm版バージョニング → PR作成 → mainマージ → release.yml自動発火
 
 **前提条件:**
-- `main` ブランチで実行すること
+- `main` ブランチから開始すること
 - ワーキングツリーがクリーンであること
 - upstreamリモートが設定済み（未設定の場合は自動追加）
 
@@ -23,18 +27,28 @@ upstream追従リリースを作成する一連のワークフローを実行し
 
 | ルール | 理由 |
 | ------ | ---- |
-| **mainブランチで実行** | upstream追従はmainに直接マージする運用 |
+| **mainブランチから開始し、syncブランチで作業** | upstream追従はPR経由でmainにマージする運用 |
 | **コンフリクト解決は1件ずつ報告** | 各マージ判断の透明性を確保するため |
 | **ビルド検証を必ず実施** | マージ後のビルド破壊を防ぐため |
 | **product.jsonのCodermカスタム値は絶対に上書きしない** | Codermのブランディング・パス設定が失われるため |
 | **`npm run watch`は絶対に実行しない** | CLAUDE.mdルール。`npm run compile`を代わりに使用 |
 | **不明なコンフリクトはユーザに確認** | 機能損失を防ぐため。推測で解決しない |
+| **PRは--adminでマージ** | j4rviscmdがownerのリポジトリでは--adminマージを許可 |
+| **GitHub Release・タグの作成は絶対禁止** | release.ymlが自動実行する。手動実行すると二重実行・競合が発生する |
 
 ## コンテキスト情報
 
 - 現在のブランチ: !`git branch --show-current`
 - upstreamリモート: !`git remote get-url upstream 2>/dev/null || echo "未設定"`
+- 最新のリリースタグ: !`git describe --tags --abbrev=0 2>/dev/null || echo "（リリースなし）"`
 - 最新のupstream同期: !`git log --oneline --grep="Merge remote-tracking branch 'upstream" -1 2>/dev/null || echo "同期履歴なし"`
+
+## Codermバージョニング（キャリーオーバー）
+
+upstream merge後、`package.json` のversionは純粋なupstreamバージョン（例: `1.122.0`）になります。
+Step 5で前回リリースタグからcoderm部分（例: `-coderm.0.15.0`）を抽出し、新しいupstreamバージョンに付加します。
+
+**例:** `1.121.0-coderm.0.15.0`（現状） → upstream merge → `1.122.0` → キャリーオーバー → `1.122.0-coderm.0.15.0`
 
 ## コンフリクト解決方針
 
@@ -43,7 +57,7 @@ upstream追従リリースを作成する一連のワークフローを実行し
 | カテゴリ | 対象ファイル例 | 解決方針 |
 |---|---|---|
 | **Codermブランディング** | `product.json` | Codermの値を維持。upstream側の新規フィールドのみ追加 |
-| **バージョン** | `package.json` | `version`フィールドはupstreamの値を採用（リリーススキルがそのまま使用） |
+| **バージョン** | `package.json` | `version`フィールドはupstreamの値を採用。Step 5でcoderm部をキャリーオーバー |
 | **Coderm独自コード** | `src/vs/workbench/contrib/coderm/` | Coderm機能を保持。upstream APIの変更に適応させる |
 | **Coderm独自ドキュメント** | `README.md`, `README.en.md`, `CLAUDE.md` | Codermのドキュメントを保持 |
 | **CI/CD** | `.github/workflows/` | 両方の変更を統合。Coderm固有ワークフローは保持 |
@@ -64,13 +78,13 @@ upstream追従リリースを作成する一連のワークフローを実行し
 
 ## 手順
 
-### Step 1: 前提条件チェック
+### Step 1: 前提条件チェック & syncブランチ作成
 
 ```bash
 # 1. ブランチ確認
 current_branch=$(git branch --show-current)
 if [ "$current_branch" != "main" ]; then
-  echo "エラー: mainブランチで実行してください（現在: $current_branch）"
+  echo "エラー: mainブランチから開始してください（現在: $current_branch）"
   exit 1
 fi
 
@@ -94,6 +108,15 @@ git pull origin main --ff-only || {
   echo "エラー: origin/mainとの同期に失敗しました"
   exit 1
 }
+
+# 5. syncブランチ作成（同日複数回実行時はサフィックス付与で衝突回避）
+sync_date=$(node -p "new Date().toISOString().slice(0,10)")
+sync_branch="sync/upstream-${sync_date}"
+if git show-ref --verify --quiet "refs/heads/${sync_branch}" 2>/dev/null; then
+  sync_branch="${sync_branch}-$(node -p "Date.now().toString(36)")"
+fi
+git checkout -b "$sync_branch"
+echo "✅ syncブランチ作成: $sync_branch"
 ```
 
 ### Step 2: upstream fetch & マージ開始
@@ -112,20 +135,19 @@ echo ""
 
 if [ "$commit_count" -eq 0 ]; then
   echo "✅ upstreamに新しい変更はありません。既に最新です。"
+  git checkout main
+  git branch -d "$sync_branch"
   exit 0
 fi
 
 # 主要な変更領域をサマリー表示
 echo "主要な変更領域:"
-git diff --stat HEAD..upstream/main | tail -5
+git diff --stat HEAD..upstream/main
 echo ""
 
 # 3. マージ実行
 echo "⏳ upstream/mainをマージ中..."
-git merge upstream/main --no-edit
-merge_exit=$?
-
-if [ $merge_exit -eq 0 ]; then
+if git merge upstream/main --no-edit; then
   echo "✅ マージ成功（コンフリクトなし）"
   # Step 4（ビルド検証）へ進む
 else
@@ -141,10 +163,10 @@ fi
 ```bash
 # コンフリクトファイル一覧を取得
 conflict_files=$(git diff --name-only --diff-filter=U)
-conflict_count=$(echo "$conflict_files" | wc -l | xargs)
+conflict_count=$(node -p "process.argv[1].split('\n').filter(Boolean).length" "$conflict_files")
 echo ""
 echo "📋 コンフリクトファイル一覧 ($conflict_count 件):"
-echo "$conflict_files" | while read -r f; do echo "  - $f"; done
+node -e "process.argv[1].split('\n').filter(Boolean).forEach(f=>console.log('  - '+f))" "$conflict_files"
 echo ""
 ```
 
@@ -194,9 +216,7 @@ fi
 
 ```bash
 echo "⏳ ビルド検証中... (npm run compile)"
-npm run compile 2>&1
-
-if [ $? -eq 0 ]; then
+if npm run compile 2>&1; then
   echo "✅ ビルド成功"
 else
   echo "❌ ビルドエラーが発生しました"
@@ -209,7 +229,49 @@ fi
 - 修正可能なら修正し、amendコミット
 - 判断が難しい場合はユーザーに報告して確認
 
-### Step 5: マージ結果サマリー & /release スキル発動
+### Step 5: coderm版バージョニング（キャリーオーバー）
+
+「Codermバージョニング（キャリーオーバー）」セクションの通り、前回リリースタグからcoderm部分を抽出して新しいバージョンに付加します。
+
+```bash
+# 1. 現在のバージョン（純粋なupstream版）を取得
+current_version=$(node -p "require('./package.json').version")
+echo "現在のpackage.jsonバージョン: $current_version"
+
+# 2. 前回リリースタグからcoderm部分を取得（codermタグのみを検索）
+latest_tag=$(git tag --list '*-coderm*' --sort=-version:refname | head -1)
+
+if [ -n "$latest_tag" ]; then
+  # 前回タグからcoderm部分を抽出（例: v1.121.0-coderm.0.15.0 → 0.15.0）
+  prev_coderm_part=$(node -p "process.argv[1].replace(/.*-coderm\./,'')" "$latest_tag")
+  next_version="${current_version}-coderm.${prev_coderm_part}"
+  echo "前回タグ（${latest_tag}）のcoderm部をキャリーオーバー: ${current_version} → ${next_version}"
+else
+  echo "前回タグにcoderm部がないか、初回リリースのため、キャリーオーバー不要（バージョン: ${current_version}）"
+  next_version="${current_version}"
+fi
+
+# 3. バージョンフォーマット検証
+if ! node -e "/^[0-9]+\.[0-9]+\.[0-9]+(-coderm\.[0-9]+\.[0-9]+\.[0-9]+)?$/.test(process.argv[1])||process.exit(1)" "$next_version"; then
+  echo "エラー: バージョンフォーマットが不正です: $next_version"
+  echo "期待フォーマット: X.Y.Z または X.Y.Z-coderm.A.B.C"
+  exit 1
+fi
+
+# 4. package.jsonとpackage-lock.jsonを更新
+if [ "$current_version" != "$next_version" ]; then
+  node -e "const fs=require('fs'),f='package.json',p=JSON.parse(fs.readFileSync(f,'utf8'));p.version=process.argv[1];fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n')" "$next_version"
+  echo "✅ バージョン更新: $current_version → $next_version"
+  npm install --package-lock-only
+  git add package.json package-lock.json
+  git commit --amend --no-edit
+  echo "✅ マージコミットにバージョン更新をamend"
+else
+  echo "✅ バージョン変更なし（$current_version）"
+fi
+```
+
+### Step 6: マージ結果サマリー & PR作成
 
 ```bash
 # マージ結果のサマリー
@@ -220,15 +282,77 @@ echo "════════════════════════�
 echo ""
 echo "  取り込みコミット数: $commit_count"
 echo "  コンフリクト解決数: $conflict_count"
-echo "  upstreamバージョン: $(grep -o '\"version\"\s*:\s*\"[^\"]*\"' package.json | head -1 | sed 's/.*: \"\(.*\)\".*/\1/')"
+echo "  バージョン: $next_version"
 echo ""
 echo "═══════════════════════════════════════"
 echo ""
 ```
 
-**その後、`/release` スキルを自動発動する。**
+syncブランチをpushし、mainへ向けたPRを作成する。
 
-releaseスキルが自動的にupstream追従リリースとして判定し、適切なバージョンでリリースPRを作成する。
+**PRタイトルテンプレート:**
+```
+chore: sync upstream microsoft/vscode v{version} ({date})
+```
+
+```bash
+# 1. syncブランチをpush
+git push -u origin "$sync_branch"
+
+# 2. PR本文を一時ファイルに生成
+pr_body_file=$(node -e "const os=require('os'),path=require('path');console.log(path.join(os.tmpdir(),'coderm-pr-body.md'))")
+node -e "
+const fs = require('fs');
+const bt = String.fromCharCode(96);
+const body = [
+  '## Summary',
+  '',
+  'Sync upstream changes from microsoft/vscode.',
+  '',
+  '- Commits merged: ' + process.argv[2],
+  '- Conflicts resolved: ' + process.argv[3],
+  '- Version: ' + process.argv[4],
+  '',
+  '## Test plan',
+  '',
+  '- [x] Build verification (' + bt + 'npm run compile' + bt + ') passed',
+  '- [ ] Launch verification (' + bt + './scripts/code.sh' + bt + ')',
+  '- [ ] No regression in existing features',
+  ''
+].join('\n');
+fs.writeFileSync(process.argv[1], body);
+" "$pr_body_file" "$commit_count" "$conflict_count" "$next_version"
+
+# 3. PR作成
+pr_title="chore: sync upstream microsoft/vscode v${next_version} (${sync_date})"
+gh pr create \
+  --title "$pr_title" \
+  --body-file "$pr_body_file"
+
+# 4. 一時ファイルを削除
+node -e "require('fs').unlinkSync(process.argv[1])" "$pr_body_file"
+```
+
+### Step 7: PRマージ → mainに戻る → 完了
+
+```bash
+# 1. PRを--adminでマージ（CI完了を待たず即時マージ。Step 4でビルド検証済みのため）
+gh pr merge "$sync_branch" --merge --admin
+
+# 2. mainに切り替えて最新を取得
+git checkout main
+git pull origin main
+
+# 3. ローカルのsyncブランチを削除
+git branch -d "$sync_branch"
+```
+
+**マージ後、release.ymlが自動的に以下を実行します:**
+1. `package.json` からバージョンを読み取り、タグ（`v{version}`）を生成
+2. macOS (`.dmg` arm64) と Windows (`.exe` x64) のビルド
+3. GitHub Releaseを作成し、ビルド成果物をアップロード
+
+AIはタグ生成・GitHub Release作成を一切行わないこと。
 
 ## エラーハンドリング
 
@@ -238,13 +362,20 @@ releaseスキルが自動的にupstream追従リリースとして判定し、�
 | fetch失敗 | ネットワーク確認を促す |
 | マージで巨大なコンフリクト | ユーザーに確認し、abort選択肢を提示 |
 | ビルドエラー | エラー内容を分析、修正を試みる |
-| /release失敗 | エラー内容を報告、手動対応を提案 |
+| PR作成失敗 | ブランチはpush済みなので手動でPR作成を提案 |
+| PRトリガCI失敗 | エラー内容を報告、自動fixを試みる |
+| PRマージ失敗 | エラー内容を報告、手動マージを提案 |
 
 ## マージ中断
 
 ユーザーが中断を要求した場合:
 
 ```bash
+# マージ中の場合
 git merge --abort
-echo "⚠️  マージを中断しました。mainブランチはマージ前の状態に戻っています。"
+
+# syncブランチにいる場合
+git checkout main
+git branch -D "$sync_branch" 2>/dev/null || true
+echo "⚠️  マージを中断しました。mainブランチに戻ります。"
 ```
