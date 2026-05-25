@@ -82,7 +82,69 @@ upstream mergeでCoderm独自の変更が上書きされる可能性のある項
 
 | 対象 | 復元内容 | 理由 |
 | ---- | -------- | ---- |
+| `product.json` Coderm設定値 | 下記「product.json復元値」参照 | ブランディング・パス設定がupstream値で上書きされるのを防ぐため |
+| `product.json` open-remote-ssh | `builtInExtensions`への拡張追加 + `extensionEnabledApiProposals` | Coderm独自の組み込み拡張。upstreamに存在しないためmerge時に消失 |
 | `package.json` scripts | `"dev": "node scripts/dev.js"` | Coderm独自のall-in-one開発コマンド。upstreamに存在しないためmerge時に消失 |
+
+### product.json復元値
+
+以下のキーはupstream merge後、常にCodermの値を維持すること。
+
+```json
+{
+  "nameShort": "Coderm",
+  "nameLong": "Coderm",
+  "applicationName": "coderm",
+  "dataFolderName": ".coderm",
+  "sharedDataFolderName": ".coderm-shared",
+  "win32MutexName": "coderm",
+  "licenseUrl": "https://github.com/j4rviscmd/Coderm/blob/main/LICENSE.txt",
+  "serverLicenseUrl": "https://github.com/j4rviscmd/Coderm/blob/main/LICENSE.txt",
+  "serverApplicationName": "coderm-server",
+  "serverDataFolderName": ".coderm-server",
+  "serverDownloadUrlTemplate": "https://github.com/j4rviscmd/Coderm/releases/download/v${version}/coderm-reh-${os}-${arch}.tar.gz",
+  "tunnelApplicationName": "coderm-tunnel",
+  "win32DirName": "Coderm",
+  "win32NameVersion": "Coderm",
+  "win32RegValueName": "Coderm",
+  "win32AppUserModelId": "Coderm",
+  "win32ShellNameShort": "C&oderm",
+  "win32TunnelServiceMutex": "coderm-tunnelservice",
+  "win32TunnelMutex": "coderm-tunnel",
+  "darwinBundleIdentifier": "com.coderm",
+  "linuxIconName": "coderm",
+  "urlProtocol": "coderm"
+}
+```
+
+**組み込み拡張（builtInExtensions）に追加必須:**
+
+```json
+{
+  "name": "jeanp413.open-remote-ssh",
+  "version": "0.1.2",
+  "sha256": "4c4305484d35a119eeac6ba57c77e8cc181b1e21a748f80a7b79b967e89a5681",
+  "repo": "https://github.com/jeanp413/open-remote-ssh",
+  "metadata": {
+    "id": "bba2d7c0-c7c8-fe0d-d0aa-86222f28ea39",
+    "publisherId": {
+      "publisherId": "8f92e487-7d76-f6b0-e49e-cc9e972053dc",
+      "publisherName": "jeanp413",
+      "displayName": "Jean Pierre",
+      "flags": ""
+    },
+    "publisherDisplayName": "Jean Pierre"
+  }
+}
+```
+
+**extensionEnabledApiProposalsに追加必須:**
+
+```json
+{
+  "jeanp413.open-remote-ssh": ["resolvers", "contribViewsRemote"]
+}
+```
 
 ## コンフリクト解決方針
 
@@ -278,6 +340,87 @@ if ! grep -q '"dev"' package.json; then
   node -e "const fs=require('fs'),f='package.json',p=JSON.parse(fs.readFileSync(f,'utf8'));p.scripts=p.scripts||{};p.scripts.dev='node scripts/dev.js';fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
   echo "  復元: package.json scripts.dev"
 fi
+
+# Coderm独自のproduct.json設定を復元
+echo "⏳ product.jsonのCoderm設定を確認中..."
+node -e "
+const fs = require('fs');
+const f = 'product.json';
+const p = JSON.parse(fs.readFileSync(f, 'utf8'));
+
+// Coderm固定値（upstreamで上書きされうるキー）
+const codermValues = {
+  nameShort: 'Coderm',
+  nameLong: 'Coderm',
+  applicationName: 'coderm',
+  dataFolderName: '.coderm',
+  sharedDataFolderName: '.coderm-shared',
+  win32MutexName: 'coderm',
+  licenseUrl: 'https://github.com/j4rviscmd/Coderm/blob/main/LICENSE.txt',
+  serverLicenseUrl: 'https://github.com/j4rviscmd/Coderm/blob/main/LICENSE.txt',
+  serverApplicationName: 'coderm-server',
+  serverDataFolderName: '.coderm-server',
+  serverDownloadUrlTemplate: 'https://github.com/j4rviscmd/Coderm/releases/download/v\${version}/coderm-reh-\${os}-\${arch}.tar.gz',
+  tunnelApplicationName: 'coderm-tunnel',
+  win32DirName: 'Coderm',
+  win32NameVersion: 'Coderm',
+  win32RegValueName: 'Coderm',
+  win32AppUserModelId: 'Coderm',
+  win32ShellNameShort: 'C&oderm',
+  win32TunnelServiceMutex: 'coderm-tunnelservice',
+  win32TunnelMutex: 'coderm-tunnel',
+  darwinBundleIdentifier: 'com.coderm',
+  linuxIconName: 'coderm',
+  urlProtocol: 'coderm'
+};
+
+let changed = false;
+for (const [key, value] of Object.entries(codermValues)) {
+  if (p[key] !== value) {
+    console.log('  復元: ' + key + ' (' + p[key] + ' -> ' + value + ')');
+    p[key] = value;
+    changed = true;
+  }
+}
+
+// open-remote-ssh組み込み拡張の確認
+const ORS_NAME = 'jeanp413.open-remote-ssh';
+if (!p.builtInExtensions.some(e => e.name === ORS_NAME)) {
+  p.builtInExtensions.push({
+    name: ORS_NAME,
+    version: '0.1.2',
+    sha256: '4c4305484d35a119eeac6ba57c77e8cc181b1e21a748f80a7b79b967e89a5681',
+    repo: 'https://github.com/jeanp413/open-remote-ssh',
+    metadata: {
+      id: 'bba2d7c0-c7c8-fe0d-d0aa-86222f28ea39',
+      publisherId: {
+        publisherId: '8f92e487-7d76-f6b0-e49e-cc9e972053dc',
+        publisherName: 'jeanp413',
+        displayName: 'Jean Pierre',
+        flags: ''
+      },
+      publisherDisplayName: 'Jean Pierre'
+    }
+  });
+  console.log('  復元: open-remote-ssh builtInExtension');
+  changed = true;
+}
+
+// extensionEnabledApiProposalsの確認
+if (!p.extensionEnabledApiProposals || !p.extensionEnabledApiProposals[ORS_NAME]) {
+  p.extensionEnabledApiProposals = p.extensionEnabledApiProposals || {};
+  p.extensionEnabledApiProposals[ORS_NAME] = ['resolvers', 'contribViewsRemote'];
+  console.log('  復元: open-remote-ssh extensionEnabledApiProposals');
+  changed = true;
+}
+
+if (changed) {
+  fs.writeFileSync(f, JSON.stringify(p, null, '\t') + '\n');
+  console.log('✅ product.json復元完了');
+} else {
+  console.log('✅ product.json Coderm設定に変更なし');
+}
+"
 
 # コンフリクトが残っている場合はStep 4へ、なければStep 5へ
 remaining=$(git diff --name-only --diff-filter=U)
