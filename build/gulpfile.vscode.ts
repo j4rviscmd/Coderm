@@ -524,7 +524,14 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 function hasAuthenticodeSignature(filePath: string): Promise<boolean> {
 	return new Promise((resolve, reject) => {
 		const proc = cp.spawn('signtool.exe', ['verify', '/pa', filePath]);
-		proc.on('error', reject);
+		proc.on('error', (err: NodeJS.ErrnoException) => {
+			// signtool.exe not found — treat as unsigned (ad-hoc builds)
+			if (err.code === 'ENOENT') {
+				resolve(false);
+			} else {
+				reject(err);
+			}
+		});
 		proc.on('exit', code => resolve(code === 0));
 	});
 }
