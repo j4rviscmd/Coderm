@@ -70,10 +70,19 @@ Step 6で前回リリースタグからcoderm部分（例: `-coderm.0.15.0`）�
 | `CLAUDE.md` | Coderm固有のプロジェクト指示 |
 | `.claude/*` | Claude Code設定（upstreamに存在しない） |
 | `.github/*` | Coderm独自のCI/CDワークフロー |
+| `.agents/*` | upstreamのGitHub Copilot agent設定（Codermでは不要） |
 | `.forest.toml` | Forest CLIのworktree設定（upstreamに存在しない） |
 | `.mcp.json` | MCPサーバー設定（upstreamに存在しない） |
 
 **取り込み対象外ファイルの処理:** `git merge` 後に対象ファイルをマージ前の状態に復元する（Step 3で実施）。コンフリクトが発生した場合でもこれらのファイルは自動的にCoderm版を採用するため、コンフリクト解決の報告は不要。
+
+## upstream merge後のCoderm独自復元項目
+
+upstream mergeでCoderm独自の変更が上書きされる可能性のある項目。merge後（Step 3〜6の間）に必ず確認・復元する。
+
+| 対象 | 復元内容 | 理由 |
+| ---- | -------- | ---- |
+| `package.json` scripts | `"dev": "node scripts/dev.js"` | Coderm独自のall-in-one開発コマンド。upstreamに存在しないためmerge時に消失 |
 
 ## コンフリクト解決方針
 
@@ -225,6 +234,7 @@ EXCLUDE_PATTERNS=(
   "CLAUDE.md"
   ".claude"
   ".github"
+  ".agents"
   ".forest.toml"
   ".mcp.json"
 )
@@ -260,6 +270,13 @@ elif [ -n "$restored" ]; then
   echo "✅ 対象外ファイルをステージング済み（非対象コンフリクト解決後にコミット）"
 else
   echo "✅ 対象外ファイルの変更なし"
+fi
+
+# Coderm独自のpackage.json scriptsを復元
+echo "⏳ Coderm独自scriptsを確認中..."
+if ! grep -q '"dev"' package.json; then
+  node -e "const fs=require('fs'),f='package.json',p=JSON.parse(fs.readFileSync(f,'utf8'));p.scripts=p.scripts||{};p.scripts.dev='node scripts/dev.js';fs.writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+  echo "  復元: package.json scripts.dev"
 fi
 
 # コンフリクトが残っている場合はStep 4へ、なければStep 5へ
