@@ -1,9 +1,10 @@
 ---
 name: sync-upstream
 description: >-
-  microsoft/vscodeのmainブランチからの変更取り込みを行う。upstreamをfetch・mergeし、
-  コンフリクトを1件ずつ解決した後、coderm版バージョニング（キャリーオーバー）を行い、
-  PRを作成してmainにマージする。マージ後はrelease.ymlが自動的にビルド・リリースを実行する。
+  microsoft/vscodeのmainブランチからの変更取り込みを行う。forest CLIでworktreeを作成し、
+  upstreamをfetch・mergeしてコンフリクトを1件ずつ解決した後、coderm版バージョニング（キャリーオーバー）を行い、
+  PRを作成してmainにマージする。CI監視後にforest finishでworktreeを削除する。
+  マージ後はrelease.ymlが自動的にビルド・リリースを実行する。
 model: opus
 disable-model-invocation: true
 ---
@@ -14,27 +15,34 @@ disable-model-invocation: true
 
 microsoft/vscode の main ブランチから最新の変更を取り込み、コンフリクトを解決し、
 coderm版バージョニング（キャリーオーバー）を行った後、PR経由でmainにマージする一連のワークフローを実行します。
+`forest` CLIによるworktree管理でmainブランチを汚さずに作業し、CI監視後にworktreeをクリーンアップします。
 マージ後は release.yml が自動的にタグ生成・ビルド・GitHub Release作成を行います。
 
-**基本フロー:** 前提条件チェック → sync ブランチ作成 → fetch & merge → コンフリクト解決（1件ずつ報告） → ビルド検証 → coderm版バージョニング → PR作成 → mainマージ → release.yml自動発火
+**基本フロー:** 前提条件チェック & 早期差分検出 → worktree作成（forest start） → upstream merge → コンフリクト解決（1件ずつ報告） → ビルド検証 → coderm版バージョニング → push & PR作成 → CI監視 → PRマージ → forest finish → release.yml自動発火
 
 **前提条件:**
 - `main` ブランチから開始すること
 - ワーキングツリーがクリーンであること
 - upstreamリモートが設定済み（未設定の場合は自動追加）
+- `forest` CLIがインストール済み
 
 ## ガードレール（絶対に守ること）
 
 | ルール | 理由 |
 | ------ | ---- |
-| **mainブランチから開始し、syncブランチで作業** | upstream追従はPR経由でmainにマージする運用 |
+| **`forest start` で worktree 作成** | main ブランチをクリーンに保つため |
+| **すべての作業は worktree 内で実行** | 隔離性を保証するため |
+| **`forest finish` でクリーンアップ** | 手動ブランチ削除ではなく forest に任せるため |
+| **ブランチ名は kebab-case のみ（スラッシュ不可）** | forest の制約。`sync-upstream-{date}` 形式を使用 |
+| **`/tmp` セッショントラッキングは必須** | worktree-start パターンとの一貫性を保つため |
 | **コンフリクト解決は1件ずつ報告** | 各マージ判断の透明性を確保するため |
 | **ビルド検証を必ず実施** | マージ後のビルド破壊を防ぐため |
 | **product.jsonのCodermカスタム値は絶対に上書きしない** | Codermのブランディング・パス設定が失われるため |
 | **`npm run watch`は絶対に実行しない** | CLAUDE.mdルール。`npm run compile`を代わりに使用 |
 | **不明なコンフリクトはユーザに確認** | 機能損失を防ぐため。推測で解決しない |
-| **PRは--adminでマージ** | j4rviscmdがownerのリポジトリでは--adminマージを許可 |
+| **PRは `--merge --admin` でマージ（`--squash` は使用しない）** | upstream履歴を保持するため。j4rviscmdがownerでは--adminを許可 |
 | **GitHub Release・タグの作成は絶対禁止** | release.ymlが自動実行する。手動実行すると二重実行・競合が発生する |
+| **取り込み対象外ファイルはupstreamの変更を反映しない** | README.md, README.en.md, CLAUDE.md, .claude/*, .github/*, .forest.toml, .mcp.json は常にCoderm版を維持 |
 
 ## コンテキスト情報
 
@@ -42,13 +50,30 @@ coderm版バージョニング（キャリーオーバー）を行った後、PR
 - upstreamリモート: !`git remote get-url upstream 2>/dev/null || echo "未設定"`
 - 最新のリリースタグ: !`git describe --tags --abbrev=0 2>/dev/null || echo "（リリースなし）"`
 - 最新のupstream同期: !`git log --oneline --grep="Merge remote-tracking branch 'upstream" -1 2>/dev/null || echo "同期履歴なし"`
+- アクティブなworktree: !`forest list 2>/dev/null || echo "（なし）"`
 
 ## Codermバージョニング（キャリーオーバー）
 
 upstream merge後、`package.json` のversionは純粋なupstreamバージョン（例: `1.122.0`）になります。
-Step 5で前回リリースタグからcoderm部分（例: `-coderm.0.15.0`）を抽出し、新しいupstreamバージョンに付加します。
+Step 6で前回リリースタグからcoderm部分（例: `-coderm.0.15.0`）を抽出し、新しいupstreamバージョンに付加します。
 
 **例:** `1.121.0-coderm.0.15.0`（現状） → upstream merge → `1.122.0` → キャリーオーバー → `1.122.0-coderm.0.15.0`
+
+## upstream取り込み対象外
+
+以下のファイル・ディレクトリはupstreamの変更を取り込まず、常にCoderm版を維持する。
+
+| 対象 | 理由 |
+| ---- | ---- |
+| `README.md` | Coderm独自のコンテンツ |
+| `README.en.md` | upstreamに存在しないCoderm独自ファイル |
+| `CLAUDE.md` | Coderm固有のプロジェクト指示 |
+| `.claude/*` | Claude Code設定（upstreamに存在しない） |
+| `.github/*` | Coderm独自のCI/CDワークフロー |
+| `.forest.toml` | Forest CLIのworktree設定（upstreamに存在しない） |
+| `.mcp.json` | MCPサーバー設定（upstreamに存在しない） |
+
+**取り込み対象外ファイルの処理:** `git merge` 後に対象ファイルをマージ前の状態に復元する（Step 3で実施）。コンフリクトが発生した場合でもこれらのファイルは自動的にCoderm版を採用するため、コンフリクト解決の報告は不要。
 
 ## コンフリクト解決方針
 
@@ -57,10 +82,10 @@ Step 5で前回リリースタグからcoderm部分（例: `-coderm.0.15.0`）�
 | カテゴリ | 対象ファイル例 | 解決方針 |
 |---|---|---|
 | **Codermブランディング** | `product.json` | Codermの値を維持。upstream側の新規フィールドのみ追加 |
-| **バージョン** | `package.json` | `version`フィールドはupstreamの値を採用。Step 5でcoderm部をキャリーオーバー |
+| **バージョン** | `package.json` | `version`フィールドはupstreamの値を採用。Step 6でcoderm部をキャリーオーバー |
 | **Coderm独自コード** | `src/vs/workbench/contrib/coderm/` | Coderm機能を保持。upstream APIの変更に適応させる |
-| **Coderm独自ドキュメント** | `README.md`, `README.en.md`, `CLAUDE.md` | Codermのドキュメントを保持 |
-| **CI/CD** | `.github/workflows/` | 両方の変更を統合。Coderm固有ワークフローは保持 |
+| **Coderm設定・ドキュメント** | `README.md`, `README.en.md`, `CLAUDE.md`, `.claude/*`, `.github/*`, `.forest.toml`, `.mcp.json` | 取り込み対象外（Step 3で自動復元） |
+| **CI/CD（参考）** | `.github/workflows/`（上記対象外の個別ファイル） | 該当なし（`.github/*` は全て対象外） |
 | **upstream純粋コード** | その他すべて | upstreamを採用。ただしCodermの変更が入っている場合は統合 |
 
 ### コンフリクト報告フォーマット
@@ -78,7 +103,9 @@ Step 5で前回リリースタグからcoderm部分（例: `-coderm.0.15.0`）�
 
 ## 手順
 
-### Step 1: 前提条件チェック & syncブランチ作成
+### Step 1: 前提条件チェック & 早期差分検出（ベースディレクトリ）
+
+**重要:** worktree作成前にupstream差分を確認し、不要なworktree作成を防止する。
 
 ```bash
 # 1. ブランチ確認
@@ -109,24 +136,10 @@ git pull origin main --ff-only || {
   exit 1
 }
 
-# 5. syncブランチ作成（同日複数回実行時はサフィックス付与で衝突回避）
-sync_date=$(node -p "new Date().toISOString().slice(0,10)")
-sync_branch="sync/upstream-${sync_date}"
-if git show-ref --verify --quiet "refs/heads/${sync_branch}" 2>/dev/null; then
-  sync_branch="${sync_branch}-$(node -p "Date.now().toString(36)")"
-fi
-git checkout -b "$sync_branch"
-echo "✅ syncブランチ作成: $sync_branch"
-```
-
-### Step 2: upstream fetch & マージ開始
-
-```bash
-# 1. upstream fetch
+# 5. upstream差分の事前確認（worktree作成前に確認）
 echo "⏳ upstreamからfetch中..."
 git fetch upstream
 
-# 2. 差分確認
 commit_count=$(git rev-list --count HEAD..upstream/main)
 echo ""
 echo "📊 upstream差分情報:"
@@ -135,8 +148,6 @@ echo ""
 
 if [ "$commit_count" -eq 0 ]; then
   echo "✅ upstreamに新しい変更はありません。既に最新です。"
-  git checkout main
-  git branch -d "$sync_branch"
   exit 0
 fi
 
@@ -145,18 +156,120 @@ echo "主要な変更領域:"
 git diff --stat HEAD..upstream/main
 echo ""
 
-# 3. マージ実行
+# sync_date と worktree_name を生成（後続Stepで使用）
+sync_date=$(node -p "new Date().toISOString().slice(0,10)")
+echo "同期日: $sync_date"
+```
+
+### Step 2: Worktree作成（forest start）
+
+```bash
+# 1. worktree名生成（同日複数回実行時はサフィックス付与で衝突回避）
+wt_name="sync-upstream-${sync_date}"
+if forest list 2>/dev/null | grep -q "$wt_name"; then
+  wt_name="${wt_name}-$(node -p "Date.now().toString(36)")"
+fi
+echo "worktree名: $wt_name"
+
+# 2. forest start 実行
+forest start . "$wt_name"
+
+# 3. セッショントラッキング
+REPO_ROOT="$(pwd)"
+REPO_HASH=$(echo "$REPO_ROOT" | (md5 -q 2>/dev/null || md5sum | cut -d' ' -f1))
+SESSION_FILE="/tmp/.claude-active-sessions-$REPO_HASH"
+TMUX_SESSION=$(tmux display-message -p '#S' 2>/dev/null || echo "none")
+echo -e "${wt_name}\t$REPO_ROOT\t$(date -u +%Y-%m-%dT%H:%M:%SZ)\t$TMUX_SESSION\t$$" >> "$SESSION_FILE"
+
+# 4. worktreeディレクトリに移動
+cd ".worktrees/${wt_name}"
+echo "✅ worktree作成完了: .worktrees/${wt_name}"
+echo "   branch: $(git branch --show-current)"
+```
+
+**forest start が実行する処理:**
+1. kebab-case検証
+2. `git worktree add -b {name} .worktrees/{name} HEAD`（ブランチ作成＋チェックアウト）
+3. `.forest.toml` の `share` パターンに基づいて `node_modules`, `out`, `.build/builtInExtensions`, `.mcp.json` をコピー
+4. `npm install` をworktree内で実行
+
+**終了コード:**
+
+| コード | 意味 |
+| ------ | ---- |
+| 0 | 成功 |
+| 1 | base_pathが存在しない |
+| 2 | nameがkebab-caseではない |
+| 3 | worktreeが既に存在する |
+| 4 | git worktreeの作成に失敗 |
+| 5 | startコマンドの実行に失敗 |
+| 13 | `.forest.toml` のshareパターンが不正 |
+
+### Step 3: upstream merge & 対象外ファイル復元（worktree内）
+
+```bash
+# マージ実行
 echo "⏳ upstream/mainをマージ中..."
 if git merge upstream/main --no-edit; then
   echo "✅ マージ成功（コンフリクトなし）"
-  # Step 4（ビルド検証）へ進む
 else
   echo "⚠️  コンフリクトが発生しました。解決を開始します。"
-  # Step 3へ進む
+  # Step 4へ進む
+fi
+
+# 取り込み対象外ファイルをマージ前の状態に復元
+echo "⏳ 取り込み対象外ファイルを復元中..."
+EXCLUDE_PATTERNS=(
+  "README.md"
+  "README.en.md"
+  "CLAUDE.md"
+  ".claude"
+  ".github"
+  ".forest.toml"
+  ".mcp.json"
+)
+
+for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+  if git diff --name-only HEAD~1 HEAD -- "$pattern" 2>/dev/null | grep -q .; then
+    git checkout --ours -- "$pattern" 2>/dev/null && git add "$pattern" && echo "  復元: $pattern"
+  fi
+done
+
+# コンフリクト中の対象外ファイルがあればCoderm版を採用
+conflict_files=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
+if [ -n "$conflict_files" ]; then
+  echo "$conflict_files" | while IFS= read -r file; do
+    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+      if echo "$file" | grep -q "^${pattern}" || [ "$file" = "$pattern" ]; then
+        git checkout --ours -- "$file"
+        git add "$file"
+        echo "  コンフリクト自動解決（Coderm版採用）: $file"
+        break
+      fi
+    done
+  done
+fi
+
+# 全コンフリクト解決済みの場合のみamend
+restored=$(git diff --cached --name-only 2>/dev/null || true)
+remaining=$(git diff --name-only --diff-filter=U)
+if [ -n "$restored" ] && [ -z "$remaining" ]; then
+  git commit --amend --no-edit
+  echo "✅ 対象外ファイルの復元をマージコミットにamend"
+elif [ -n "$restored" ]; then
+  echo "✅ 対象外ファイルをステージング済み（非対象コンフリクト解決後にコミット）"
+else
+  echo "✅ 対象外ファイルの変更なし"
+fi
+
+# コンフリクトが残っている場合はStep 4へ、なければStep 5へ
+remaining=$(git diff --name-only --diff-filter=U)
+if [ -n "$remaining" ]; then
+  echo "⚠️  残りのコンフリクトをStep 4で解決します"
 fi
 ```
 
-### Step 3: コンフリクト解決
+### Step 4: コンフリクト解決（worktree内、条件付き）
 
 **重要:** このステップはマージでコンフリクトが発生した場合のみ実行する。
 
@@ -186,10 +299,8 @@ echo ""
 コンフリクトファイルを読む
   → product.jsonか？ → Coderm値を維持、新フィールド追加
   → package.jsonか？ → versionはupstream採用、その他はケースバイケース
-  → README.md/README.en.mdか？ → Coderm版を保持
-  → CLAUDE.mdか？ → Coderm版を保持
+  → 取り込み対象外か？（README.md, .claude/*, .github/*等） → Step 3で既にCoderm版採用済み
   → contrib/coderm/ 配下か？ → Coderm機能を保持、upstream API変更に適応
-  → .github/workflows/ 配下か？ → 両方統合
   → その他か？
     → Coderm独自変更が含まれるか確認
       → 含まれない → upstreamを採用
@@ -212,7 +323,7 @@ else
 fi
 ```
 
-### Step 4: ビルド検証
+### Step 5: ビルド検証（worktree内）
 
 ```bash
 echo "⏳ ビルド検証中... (npm run compile)"
@@ -229,7 +340,7 @@ fi
 - 修正可能なら修正し、amendコミット
 - 判断が難しい場合はユーザーに報告して確認
 
-### Step 5: coderm版バージョニング（キャリーオーバー）
+### Step 6: coderm版バージョニング（キャリーオーバー）（worktree内）
 
 「Codermバージョニング（キャリーオーバー）」セクションの通り、前回リリースタグからcoderm部分を抽出して新しいバージョンに付加します。
 
@@ -271,10 +382,10 @@ else
 fi
 ```
 
-### Step 6: マージ結果サマリー & PR作成
+### Step 7: push & PR作成（worktreeから）
 
 ```bash
-# マージ結果のサマリー
+# 1. 同期サマリー
 echo ""
 echo "═══════════════════════════════════════"
 echo "  📋 Upstream同期完了サマリー"
@@ -286,20 +397,11 @@ echo "  バージョン: $next_version"
 echo ""
 echo "═══════════════════════════════════════"
 echo ""
-```
 
-syncブランチをpushし、mainへ向けたPRを作成する。
+# 2. ブランチをpush
+git push -u origin "$wt_name"
 
-**PRタイトルテンプレート:**
-```
-chore: sync upstream microsoft/vscode v{version} ({date})
-```
-
-```bash
-# 1. syncブランチをpush
-git push -u origin "$sync_branch"
-
-# 2. PR本文を一時ファイルに生成
+# 3. PR本文を一時ファイルに生成
 pr_body_file=$(node -e "const os=require('os'),path=require('path');console.log(path.join(os.tmpdir(),'coderm-pr-body.md'))")
 node -e "
 const fs = require('fs');
@@ -323,34 +425,108 @@ const body = [
 fs.writeFileSync(process.argv[1], body);
 " "$pr_body_file" "$commit_count" "$conflict_count" "$next_version"
 
-# 3. PR作成
+# 4. PR作成
 pr_title="chore: sync upstream microsoft/vscode v${next_version} (${sync_date})"
 gh pr create \
   --title "$pr_title" \
   --body-file "$pr_body_file"
 
-# 4. 一時ファイルを削除
+# 5. 一時ファイルを削除
 node -e "require('fs').unlinkSync(process.argv[1])" "$pr_body_file"
+
+# 6. PR番号を記憶（後続Stepで使用）
+pr_number=$(gh pr list --head "$wt_name" --json number --jq '.[0].number')
+echo "✅ PR作成完了: #$pr_number"
 ```
 
-### Step 7: PRマージ → mainに戻る → 完了
+### Step 8: CI監視
+
+PRトリガのCIが完了するまで監視する。`monitor-pr-ci` スキルを呼び出して結果を取得する。
+
+**実行:** Skill toolで `monitor-pr-ci` を呼び出す（PR番号を引数として渡す）
+
+**結果に応じた対応:**
+
+| 結果 | アクション |
+| ---- | ---------- |
+| **OK** | Step 9（PRマージ）へ進む |
+| **NG** | エラー内容を報告、AskUserQuestionで次のアクションを確認（修正/再試行/スキップ/中断） |
+| **TIMEOUT** | AskUserQuestionで次のアクションを確認（再試行/スキップ/中断） |
+| **SKIPPED** | PRトリガworkflowが存在しない。Step 9 へ進む |
+
+**CI失敗時の注意:** upstream マージの自動修正はマージを壊すリスクがあるため、手動介入を優先する。
+
+### Step 9: PRマージ（worktreeから）
 
 ```bash
-# 1. PRを--adminでマージ（CI完了を待たず即時マージ。Step 4でビルド検証済みのため）
-gh pr merge "$sync_branch" --merge --admin
-
-# 2. mainに切り替えて最新を取得
-git checkout main
-git pull origin main
-
-# 3. ローカルのsyncブランチを削除
-git branch -d "$sync_branch"
+# PRを --merge --admin でマージ（--squash は使用しない。upstream履歴を保持するため）
+gh pr merge "$pr_number" --merge --admin
+echo "✅ PRマージ完了: #$pr_number"
 ```
 
-**マージ後、release.ymlが自動的に以下を実行します:**
-1. `package.json` からバージョンを読み取り、タグ（`v{version}`）を生成
-2. macOS (`.dmg` arm64) と Windows (`.exe` x64) のビルド
-3. GitHub Releaseを作成し、ビルド成果物をアップロード
+### Step 10: ベースディレクトリ復帰 & forest finish
+
+```bash
+# 1. ベースディレクトリに移動
+cd "$(git rev-parse --show-toplevel)/../.."
+echo "✅ ベースディレクトリに復帰: $(pwd)"
+
+# 2. forest finish でworktreeを削除
+forest finish "$wt_name"
+
+# 3. セッションファイルクリーンアップ
+REPO_ROOT="$(pwd)"
+REPO_HASH=$(echo "$REPO_ROOT" | (md5 -q 2>/dev/null || md5sum | cut -d' ' -f1))
+SESSION_FILE="/tmp/.claude-active-sessions-$REPO_HASH"
+if [ -f "$SESSION_FILE" ]; then
+  awk -F'\t' '$1 != "'"$wt_name"'"' "$SESSION_FILE" > "${SESSION_FILE}.tmp" && mv "${SESSION_FILE}.tmp" "$SESSION_FILE"
+  [ ! -s "$SESSION_FILE" ] && rm "$SESSION_FILE"
+fi
+echo "✅ worktree削除完了: $wt_name"
+```
+
+**forest finish が実行する処理:**
+1. `.worktrees/<name>/.git` の存在確認
+2. 未プッシュコミット検査
+3. `git worktree remove`
+4. `git pull`（main ブランチ）
+5. マージ済みブランチの自動削除
+6. `npm install`（`.forest.toml` の `[finish].commands`）
+
+**forest finish の終了コード:**
+
+| コード | 意味 | 対処 |
+| ------ | ---- | ---- |
+| 0 | 成功 | 次のStepへ |
+| 6 | `.worktrees/` が見つからない | cwdがベースディレクトリでない。Step 10 からやり直し |
+| 7 | worktreeが見つからない | `{name}` が間違っている。`forest list` で確認 |
+| 8 | finishコマンドの実行失敗 | `.forest.toml` の `[finish].commands` を確認 |
+| 10 | `git pull` の失敗 | ネットワークやコンフリクトの可能性。手動で `git pull` してから再試行 |
+| 11 | `git worktree remove` の失敗 | `git worktree remove --force` を手動実行してから再試行 |
+| 12 | 未プッシュコミットが検出された | Step 7 のpushが不完全だった可能性。手動でpushしてから再試行 |
+
+### Step 11: 同期完了サマリー
+
+```bash
+echo ""
+echo "═══════════════════════════════════════"
+echo "  ✅ Upstream同期完了"
+echo "═══════════════════════════════════════"
+echo ""
+echo "  取り込みコミット数: $commit_count"
+echo "  コンフリクト解決数: $conflict_count"
+echo "  バージョン: $next_version"
+echo "  PR: #$pr_number (merged)"
+echo "  worktree: 削除済み ($wt_name)"
+echo ""
+echo "  release.ymlが自動的に以下を実行します:"
+echo "  1. タグ（v${next_version}）の生成"
+echo "  2. macOS (.dmg arm64) と Windows (.exe x64) のビルド"
+echo "  3. GitHub Releaseの作成・ビルド成果物のアップロード"
+echo ""
+echo "═══════════════════════════════════════"
+echo ""
+```
 
 AIはタグ生成・GitHub Release作成を一切行わないこと。
 
@@ -360,22 +536,43 @@ AIはタグ生成・GitHub Release作成を一切行わないこと。
 |---|---|
 | upstreamリモート追加失敗 | ネットワーク確認を促す |
 | fetch失敗 | ネットワーク確認を促す |
+| `forest start` 失敗 | stderrのエラーメッセージを報告。終了コード別に対処 |
 | マージで巨大なコンフリクト | ユーザーに確認し、abort選択肢を提示 |
 | ビルドエラー | エラー内容を分析、修正を試みる |
 | PR作成失敗 | ブランチはpush済みなので手動でPR作成を提案 |
-| PRトリガCI失敗 | エラー内容を報告、自動fixを試みる |
+| CI失敗 | エラー内容を報告、手動介入を優先 |
 | PRマージ失敗 | エラー内容を報告、手動マージを提案 |
+| `forest finish` 失敗 | 終了コード別に対処（上記Step 10の表を参照） |
 
 ## マージ中断
 
 ユーザーが中断を要求した場合:
 
 ```bash
-# マージ中の場合
+# Step 3-4 中（マージ進行中）の場合
 git merge --abort
 
-# syncブランチにいる場合
-git checkout main
-git branch -D "$sync_branch" 2>/dev/null || true
+# ベースディレクトリに戻る
+cd "$(git rev-parse --show-toplevel)/../.." 2>/dev/null || true
+
+# worktreeを削除
+forest finish "$wt_name" 2>/dev/null || git worktree remove --force ".worktrees/$wt_name" 2>/dev/null
+
+# セッションファイルクリーンアップ
+REPO_ROOT="$(pwd)"
+REPO_HASH=$(echo "$REPO_ROOT" | (md5 -q 2>/dev/null || md5sum | cut -d' ' -f1))
+SESSION_FILE="/tmp/.claude-active-sessions-$REPO_HASH"
+if [ -f "$SESSION_FILE" ]; then
+  awk -F'\t' '$1 != "'"$wt_name"'"' "$SESSION_FILE" > "${SESSION_FILE}.tmp" && mv "${SESSION_FILE}.tmp" "$SESSION_FILE"
+  [ ! -s "$SESSION_FILE" ] && rm "$SESSION_FILE"
+fi
+
 echo "⚠️  マージを中断しました。mainブランチに戻ります。"
 ```
+
+## 連携スキル
+
+| ツール | 用途 |
+| ------ | ---- |
+| `forest` CLI (start/finish/list) | worktree ライフサイクル管理 |
+| `monitor-pr-ci` スキル | PR の CI 監視（結果報告のみ、自動修正なし） |
