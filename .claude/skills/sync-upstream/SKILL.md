@@ -1,7 +1,6 @@
 ---
 name: sync-upstream
-description: >-
-  microsoft/vscodeのmainブランチからの変更取り込みを行う。upstreamをfetch・mergeし、コンフリクトを1件ずつ解決（各解決内容を報告）した後、/releaseスキルを自動発動してupstream追従リリースを作成する
+description: microsoft/vscodeのmainブランチからの変更取り込みを行う。upstreamをfetch・mergeし、コンフリクトを1件ずつ解決した後、/releaseスキルを自動発動してupstream追従リリースを作成する
 model: opus
 disable-model-invocation: true
 ---
