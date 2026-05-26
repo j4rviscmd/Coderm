@@ -14,6 +14,7 @@ import './cursorAutoHide.js';
 import './defaultThemeInstaller.js';
 import './devTitlePrefix.js';
 import './editorGroupIndex.js';
+import './gitWorktreeDefaults.js';
 import './preventNewGroupOnFocus.js';
 import './quickOpenIncludeTerminals.js';
 import './resizePaneActions.js';

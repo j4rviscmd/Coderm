@@ -64,11 +64,14 @@ export class GitQuickDiffProvider implements QuickDiffProvider {
 			return undefined;
 		}
 
-		// Ignore path that is git ignored
-		const ignored = await this.repository.checkIgnore([uri.fsPath]);
-		if (ignored.size > 0) {
-			this.logger.trace(`[Repository][provideOriginalResource] Resource is git ignored: ${uri.toString()}`);
-			return undefined;
+		// Ignore path that is git ignored (skip for worktree repositories)
+		// Worktrees manage their own ignore rules independently from the main repository
+		if (this.repository.kind !== 'worktree') {
+			const ignored = await this.repository.checkIgnore([uri.fsPath]);
+			if (ignored.size > 0) {
+				this.logger.trace(`[Repository][provideOriginalResource] Resource is git ignored: ${uri.toString()}`);
+				return undefined;
+			}
 		}
 
 		const originalResource = toGitUri(uri, '', { replaceFileExtension: true });
