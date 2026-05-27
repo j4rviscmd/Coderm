@@ -46,6 +46,7 @@
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
+	min-width: 0;
 }
 
 .update-tooltip .product-name {
@@ -58,6 +59,14 @@
 	display: flex;
 	align-items: center;
 	gap: 4px;
+	min-width: 0;
+}
+
+.update-tooltip .product-version > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
 }
 
 .update-tooltip .copy-version-button {

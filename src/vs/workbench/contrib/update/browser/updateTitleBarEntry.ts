@@ -163,7 +163,22 @@ export class UpdateTitleBarContribution extends Disposable implements IWorkbench
 		if (ACTIONABLE_STATES.includes(this.state.type)) {
 			await this.setContextWhenChatIdle(true);
 		} else {
-			this.context.set(false);
+			// Set context immediately for progress states to prevent flicker.
+			// Without this, the entry would briefly disappear (context=false) before
+			// the await below, causing the hover tooltip to be dismissed.
+			switch (this.state.type) {
+				case StateType.Downloading:
+				case StateType.Updating:
+				case StateType.Overwriting:
+					this.context.set(this.state.explicit);
+					break;
+				case StateType.Restarting:
+					this.context.set(true);
+					break;
+				default:
+					this.context.set(false);
+					break;
+			}
 		}
 
 		if (this.tooltipVisible || !await this.hostService.hadLastFocus()) {
@@ -185,14 +200,6 @@ export class UpdateTitleBarContribution extends Disposable implements IWorkbench
 				break;
 			case StateType.Idle:
 				showTooltip = !!this.state.error;
-				break;
-			case StateType.Downloading:
-			case StateType.Updating:
-			case StateType.Overwriting:
-				this.context.set(this.state.explicit);
-				break;
-			case StateType.Restarting:
-				this.context.set(true);
 				break;
 		}
 
