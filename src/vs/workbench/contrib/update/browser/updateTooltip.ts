@@ -371,7 +371,13 @@ export class UpdateTooltip extends Disposable {
 		// Latest version
 		const version = update?.productVersion;
 		if (version) {
-			const updateCommitId = update.version?.substring(0, 7);
+			// Only show commit ID in parentheses if update.version is an actual
+			// commit hash (hex string). In Coderm, update.version is a git tag name
+			// (e.g. "v1.122.0-coderm.0.17.1") which would produce a meaningless
+			// truncation and overflow the container.
+			const rawVersion = update.version;
+			const isCommitHash = rawVersion ? /^[0-9a-f]{7,40}$/i.test(rawVersion) : false;
+			const updateCommitId = isCommitHash ? rawVersion!.substring(0, 7) : undefined;
 			this.latestVersionNode.textContent = updateCommitId
 				? localize('updateTooltip.latestVersionLabelWithCommit', "Latest Version: {0} ({1})", version, updateCommitId)
 				: localize('updateTooltip.latestVersionLabel', "Latest Version: {0}", version);

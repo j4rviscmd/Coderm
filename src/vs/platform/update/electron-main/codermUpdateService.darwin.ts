@@ -110,16 +110,20 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 	 * Performs platform-specific initialisation for the Darwin update service.
 	 * Logs the use of the GitHub Releases API and delegates to the base class.
 	 *
-	 * TODO(dev-only): temporarily bypasses the isBuilt check so that the
-	 * update flow can be tested from a dev build. Remove before release.
+	 * In dev mode, temporarily bypasses the `isBuilt` and `commit` checks so
+	 * that the update flow can be tested from a dev build.
 	 */
 	protected override async initialize(): Promise<void> {
 		this.logService.info('coderm-update#initialize - using GitHub Releases API');
 
 		const isDev = !this.environmentMainService.isBuilt;
+		const originalCommit = this.productService.commit;
 		if (isDev) {
-			this.logService.info('coderm-update#initialize - dev mode: temporarily bypassing isBuilt check');
+			this.logService.info('coderm-update#initialize - dev mode: temporarily bypassing isBuilt/commit checks');
 			Object.defineProperty(this.environmentMainService, 'isBuilt', { value: true, configurable: true });
+			if (!this.productService.commit) {
+				Object.defineProperty(this.productService, 'commit', { value: 'dev', configurable: true });
+			}
 		}
 
 		try {
@@ -127,6 +131,7 @@ export class CodermDarwinUpdateService extends AbstractUpdateService implements 
 		} finally {
 			if (isDev) {
 				Object.defineProperty(this.environmentMainService, 'isBuilt', { value: false, configurable: true });
+				Object.defineProperty(this.productService, 'commit', { value: originalCommit, configurable: true });
 			}
 		}
 	}
