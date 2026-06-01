@@ -94,6 +94,12 @@ if [[ ! -f "$ELECTRON_PATH" ]]; then
 	echo "[dev] Electron download complete."
 fi
 
+# Ensure vsda stub module is available (required by Pylance for product validation)
+if [[ ! -d "$ROOT/node_modules/vsda" ]]; then
+	cp -r "$ROOT/contrib/coderm/vsda" "$ROOT/node_modules/vsda"
+	echo "[dev] Installed vsda stub module."
+fi
+
 ##
 # ensure_builtin_extensions - Build built-in extensions from j4rviscmd fork
 # sources, falling back to VSIX download from GitHub Releases.
@@ -149,7 +155,7 @@ ensure_builtin_extensions() {
 				continue
 			fi
 			use_source=true
-		elif git ls-remote --exit-code "$fork_repo" HEAD >/dev/null 2>&1; then
+		elif [ ! -d "$source_dir" ] && git ls-remote --exit-code "$fork_repo" HEAD >/dev/null 2>&1; then
 			# Fork exists on GitHub — clone it
 			echo "[dev] Cloning $name from source ($fork_repo)..."
 			mkdir -p "$ROOT/.build/sources"
