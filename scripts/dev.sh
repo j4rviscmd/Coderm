@@ -95,11 +95,15 @@ if [[ ! -f "$ELECTRON_PATH" ]]; then
 fi
 
 ##
-# ensure_builtin_extensions - Download built-in extensions from GitHub Releases
-# that are not available on Microsoft Marketplace.
+# ensure_builtin_extensions - Build built-in extensions from j4rviscmd fork
+# sources, falling back to VSIX download from GitHub Releases.
 #
-# Reads product.json builtInExtensions entries with a "repo" field and downloads
-# them from GitHub Releases if not already present (or version mismatched).
+# For each extension listed in product.json with a "repo" field:
+# 1. Try to clone (or pull) from the j4rviscmd fork on GitHub.
+# 2. If fork exists, install dependencies, build, and install.
+# 3. If fork doesn't exist, fall back to VSIX download from original repo.
+#
+# Skips rebuild when the source commit hasn't changed.
 ##
 ensure_builtin_extensions() {
 	local product_json="$ROOT/product.json"
@@ -120,9 +124,61 @@ ensure_builtin_extensions() {
 
 	while IFS='|' read -r name version repo; do
 		local ext_dir="$ROOT/.build/builtInExtensions/$name"
-		local pkg_json="$ext_dir/package.json"
+		local repo_url="${repo%/}"
+		local repo_basename="${repo_url##*/}"
+		local source_dir="$ROOT/.build/sources/$repo_basename"
 
-		# Check if already up to date
+		# Try j4rviscmd fork first
+		local fork_repo="https://github.com/j4rviscmd/$repo_basename.git"
+		local use_source=false
+
+		if [ -d "$source_dir/.git" ]; then
+			# Already cloned from fork — update and build
+			local prev_hash
+			prev_hash=$(git -C "$source_dir" rev-parse HEAD)
+
+			echo "[dev] Updating $name from source..."
+			git -C "$source_dir" pull --ff-only --quiet 2>/dev/null || true
+
+			local new_hash
+			new_hash=$(git -C "$source_dir" rev-parse HEAD)
+
+			# No source changes and already built
+			if [ "$prev_hash" = "$new_hash" ] && [ -f "$ext_dir/.source-hash" ]; then
+				echo "[dev] Built-in extension $name up to date (source)."
+				continue
+			fi
+			use_source=true
+		elif git ls-remote --exit-code "$fork_repo" HEAD >/dev/null 2>&1; then
+			# Fork exists on GitHub — clone it
+			echo "[dev] Cloning $name from source ($fork_repo)..."
+			mkdir -p "$ROOT/.build/sources"
+			git clone --depth 1 "$fork_repo" "$source_dir"
+			use_source=true
+		fi
+
+		if [ "$use_source" = true ]; then
+			# Build from source
+			local source_hash
+			source_hash=$(git -C "$source_dir" rev-parse HEAD)
+			echo "[dev] Building $name..."
+			(cd "$source_dir" && npm install --quiet 2>/dev/null && npm run build)
+
+			# Copy built files to extension directory
+			rm -rf "$ext_dir"
+			mkdir -p "$ext_dir"
+			cp "$source_dir/package.json" "$ext_dir/"
+			if [ -d "$source_dir/lib" ]; then
+				mkdir -p "$ext_dir/lib"
+				cp "$source_dir/lib/extension.js" "$ext_dir/lib/"
+			fi
+			echo "$source_hash" > "$ext_dir/.source-hash"
+			echo "[dev] Installed $name from source ($source_hash)."
+			continue
+		fi
+
+		# Fallback: download VSIX from original repo's GitHub Releases
+		local pkg_json="$ext_dir/package.json"
 		if [ -f "$pkg_json" ]; then
 			local disk_version
 			disk_version=$(node -p "require('$pkg_json').version" 2>/dev/null || echo "")
@@ -132,35 +188,25 @@ ensure_builtin_extensions() {
 			fi
 		fi
 
-		# Derive download URL from repo field
-		# e.g. repo: "https://github.com/jeanp413/open-remote-ssh" -> basename: "open-remote-ssh"
-		local repo_url="${repo%/}"
-		local repo_basename="${repo_url##*/}"
 		local vsix_url="$repo_url/releases/download/v$version/$repo_basename-$version.vsix"
-
 		echo "[dev] Downloading built-in extension: $name@$version..."
 
-		# Download VSIX
 		local temp_vsix="/tmp/$repo_basename-$version.vsix"
 		if ! curl -sL "$vsix_url" -o "$temp_vsix"; then
 			echo "[dev] WARNING: Failed to download $name" >&2
 			continue
 		fi
 
-		# Extract VSIX (it's a ZIP file with extension/ prefix)
 		local temp_extract="/tmp/$repo_basename-extract"
 		rm -rf "$temp_extract"
 		unzip -q -o "$temp_vsix" -d "$temp_extract" 'extension/*'
 
-		# Copy extension contents to target directory
 		rm -rf "$ext_dir"
 		mkdir -p "$ext_dir"
 		cp -r "$temp_extract/extension/"* "$ext_dir/"
 
-		# Cleanup
 		rm -f "$temp_vsix"
 		rm -rf "$temp_extract"
-
 		echo "[dev] Installed $name@$version."
 	done <<< "$ext_info"
 }
