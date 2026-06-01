@@ -108,11 +108,6 @@
 			"resolvers",
 			"contribViewsRemote"
 		],
-		"ms-python.vscode-pylance": [
-			"terminalShellEnv",
-			"portsAttributes",
-			"codeActionAI"
-		],
 		"ms-python.python": [
 			"portsAttributes",
 			"terminalShellEnv",
