@@ -72,6 +72,7 @@ export interface IProductConfiguration {
 
 	readonly nameShort: string;
 	readonly nameLong: string;
+	readonly extensionAppName?: string; // Coderm: appName exposed to extensions via vscode.env.appName
 
 	readonly win32AppUserModelId?: string;
 	readonly win32MutexName?: string;
