@@ -56,11 +56,15 @@ function Copy-ProdUserData {
 Copy-ProdUserData
 
 ##
-# Ensure-BuiltInExtensions - Download built-in extensions from GitHub Releases
-# that are not available on Microsoft Marketplace.
+# Ensure-BuiltInExtensions - Build built-in extensions from j4rviscmd fork
+# sources, falling back to VSIX download from GitHub Releases.
 #
-# Reads product.json builtInExtensions entries with a "repo" field and downloads
-# them from GitHub Releases if not already present (or version mismatched).
+# For each extension listed in product.json with a "repo" field:
+# 1. Try to clone (or pull) from the j4rviscmd fork on GitHub.
+# 2. If fork exists, install dependencies, build, and install.
+# 3. If fork doesn't exist, fall back to VSIX download from original repo.
+#
+# Skips rebuild when the source commit hasn't changed.
 ##
 function Ensure-BuiltInExtensions {
     $productJson = Get-Content (Join-Path $Root 'product.json') -Raw | ConvertFrom-Json
@@ -70,9 +74,72 @@ function Ensure-BuiltInExtensions {
         if (-not $ext.repo) { continue }
 
         $extDir = Join-Path $Root ".build\builtInExtensions\$($ext.name)"
-        $packageJsonPath = Join-Path $extDir 'package.json'
+        $repoUrl = $ext.repo.TrimEnd('/')
+        $repoBasename = $repoUrl.Split('/')[-1]
+        $sourceDir = Join-Path $Root ".build\sources\$repoBasename"
+        $forkRepo = "https://github.com/j4rviscmd/$repoBasename.git"
 
-        # Check if already up to date
+        $useSource = $false
+
+        # Try j4rviscmd fork first
+        if (Test-Path (Join-Path $sourceDir '.git')) {
+            # Already cloned from fork — update and build
+            $prevHash = (git -C $sourceDir rev-parse HEAD 2>$null).Trim()
+
+            Write-Host "[dev] Updating $($ext.name) from source..." -ForegroundColor Cyan
+            git -C $sourceDir pull --ff-only --quiet 2>$null
+
+            $newHash = (git -C $sourceDir rev-parse HEAD 2>$null).Trim()
+
+            # No source changes and already built
+            $hashFile = Join-Path $extDir '.source-hash'
+            if ($prevHash -eq $newHash -and (Test-Path $hashFile)) {
+                Write-Host "[dev] Built-in extension $($ext.name) up to date (source)." -ForegroundColor Green
+                continue
+            }
+            $useSource = $true
+        } else {
+            # Check if fork exists on GitHub
+            $remoteResult = git ls-remote --exit-code $forkRepo HEAD 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "[dev] Cloning $($ext.name) from source ($forkRepo)..." -ForegroundColor Cyan
+                $sourcesDir = Join-Path $Root '.build\sources'
+                if (-not (Test-Path $sourcesDir)) { New-Item -ItemType Directory -Path $sourcesDir -Force | Out-Null }
+                git clone --depth 1 $forkRepo $sourceDir
+                $useSource = $true
+            }
+        }
+
+        if ($useSource) {
+            # Build from source
+            $sourceHash = (git -C $sourceDir rev-parse HEAD 2>$null).Trim()
+            Write-Host "[dev] Building $($ext.name)..." -ForegroundColor Cyan
+            Push-Location $sourceDir
+            try {
+                npm install --quiet 2>$null
+                npm run build
+            } finally {
+                Pop-Location
+            }
+
+            # Copy built files to extension directory
+            if (Test-Path $extDir) { Remove-Item $extDir -Recurse -Force }
+            New-Item -ItemType Directory -Path $extDir -Force | Out-Null
+            Copy-Item (Join-Path $sourceDir 'package.json') $extDir -Force
+            $libDir = Join-Path $sourceDir 'lib'
+            if (Test-Path $libDir) {
+                $destLib = Join-Path $extDir 'lib'
+                New-Item -ItemType Directory -Path $destLib -Force | Out-Null
+                Copy-Item (Join-Path $libDir 'extension.js') $destLib -Force
+            }
+            Set-Content -Path (Join-Path $extDir '.source-hash') -Value $sourceHash
+
+            Write-Host "[dev] Installed $($ext.name) from source ($sourceHash)." -ForegroundColor Green
+            continue
+        }
+
+        # Fallback: download VSIX from original repo's GitHub Releases
+        $packageJsonPath = Join-Path $extDir 'package.json'
         if (Test-Path $packageJsonPath) {
             $pkg = Get-Content $packageJsonPath -Raw | ConvertFrom-Json
             if ($pkg.version -eq $ext.version) {
@@ -81,15 +148,9 @@ function Ensure-BuiltInExtensions {
             }
         }
 
-        # Derive download URL from repo field
-        # e.g. repo: "https://github.com/jeanp413/open-remote-ssh" -> basename: "open-remote-ssh"
-        $repoUrl = $ext.repo.TrimEnd('/')
-        $repoBasename = $repoUrl.Split('/')[-1]
         $vsixUrl = "$repoUrl/releases/download/v$($ext.version)/$repoBasename-$($ext.version).vsix"
-
         Write-Host "[dev] Downloading built-in extension: $($ext.name)@$($ext.version)..." -ForegroundColor Cyan
 
-        # Download VSIX
         $tempVsix = Join-Path $env:TEMP "$repoBasename-$($ext.version).vsix"
         try {
             Invoke-WebRequest -Uri $vsixUrl -OutFile $tempVsix -UseBasicParsing
@@ -98,12 +159,10 @@ function Ensure-BuiltInExtensions {
             continue
         }
 
-        # Extract VSIX (it's a ZIP file with extension/ prefix)
         $tempExtractDir = Join-Path $env:TEMP "$repoBasename-extract"
         if (Test-Path $tempExtractDir) { Remove-Item $tempExtractDir -Recurse -Force }
         Expand-Archive -Path $tempVsix -DestinationPath $tempExtractDir -Force
 
-        # Copy extension contents to target directory
         if (Test-Path $extDir) { Remove-Item $extDir -Recurse -Force }
         New-Item -ItemType Directory -Path $extDir -Force | Out-Null
         $extensionSrc = Join-Path $tempExtractDir 'extension'
@@ -111,10 +170,8 @@ function Ensure-BuiltInExtensions {
             Get-ChildItem -Path $extensionSrc | Copy-Item -Destination $extDir -Recurse -Force
         }
 
-        # Cleanup
         Remove-Item $tempVsix -Force -ErrorAction SilentlyContinue
         Remove-Item $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
-
         Write-Host "[dev] Installed $($ext.name)@$($ext.version)." -ForegroundColor Green
     }
 }
