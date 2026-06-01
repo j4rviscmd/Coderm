@@ -1,6 +1,7 @@
 {
 	"nameShort": "Coderm",
 	"nameLong": "Coderm",
+	"extensionAppName": "Visual Studio Code",
 	"applicationName": "coderm",
 	"dataFolderName": ".coderm",
 	"sharedDataFolderName": ".coderm-shared",
@@ -106,6 +107,34 @@
 		"jeanp413.open-remote-ssh": [
 			"resolvers",
 			"contribViewsRemote"
+		],
+		"ms-python.vscode-pylance": [
+			"terminalShellEnv",
+			"portsAttributes",
+			"codeActionAI"
+		],
+		"ms-python.python": [
+			"portsAttributes",
+			"terminalShellEnv",
+			"contribEditorContentMenu",
+			"quickPickSortByLabel",
+			"testObserver",
+			"quickPickItemTooltip",
+			"terminalDataWriteEvent",
+			"terminalExecuteCommandEvent",
+			"codeActionAI",
+			"notebookReplDocument",
+			"notebookVariableProvider"
+		],
+		"ms-python.debugpy": [
+			"portsAttributes",
+			"debugVisualization",
+			"contribViewsWelcome"
+		],
+		"ms-python.vscode-python-envs": [
+			"terminalShellEnv",
+			"terminalDataWriteEvent",
+			"taskExecutionTerminal"
 		]
 	},
 	"defaultChatAgent": {
