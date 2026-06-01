@@ -81,15 +81,16 @@
 
 ## 既知の制限事項
 
-| 機能                                 | 制限                                   | 備考                                              |
-| :----------------------------------- | :------------------------------------- | :------------------------------------------------ |
-| Settings Sync                        | 本家VS Code限定サービスのため利用不可  |                                                   |
-| `ms-vscode-remote.remote-ssh`        | 本家サーバーインフラ依存のためブロック | ビルトインの`Open Remote - SSH`を使用してください |
-| `ms-vscode-remote.remote-ssh-edit`   | 同上                                   |                                                   |
-| `ms-vscode.remote-explorer`          | 同上                                   |                                                   |
-| `ms-vscode-remote.remote-containers` | 同上                                   |                                                   |
-| `ms-vscode-remote.remote-wsl`        | 同上                                   |                                                   |
-| `ms-vscode.remote-tunnels`           | 同上                                   |                                                   |
+| 機能                                 | 制限                                   | 備考                                                                                                          |
+| :----------------------------------- | :------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
+| Settings Sync                        | 本家VS Code限定サービスのため利用不可  |                                                                                                               |
+| `ms-python.vscode-pylance`           | プロプライエタリ依存のためブロック     | [BasedPyright](https://marketplace.visualstudio.com/items?itemName=detachhead.basedpyright)を使用してください |
+| `ms-vscode-remote.remote-ssh`        | 本家サーバーインフラ依存のためブロック | ビルトインの`Open Remote - SSH`を使用してください                                                             |
+| `ms-vscode-remote.remote-ssh-edit`   | 同上                                   |                                                                                                               |
+| `ms-vscode.remote-explorer`          | 同上                                   |                                                                                                               |
+| `ms-vscode-remote.remote-containers` | 同上                                   |                                                                                                               |
+| `ms-vscode-remote.remote-wsl`        | 同上                                   |                                                                                                               |
+| `ms-vscode.remote-tunnels`           | 同上                                   |                                                                                                               |
 
 ---
 

@@ -90,14 +90,7 @@ fi
 if [[ ! -f "$ELECTRON_PATH" ]]; then
 	echo "[dev] Electron not found. Downloading..."
 	npm run electron
-	if [[ $? -ne 0 ]]; then exit 1; fi
 	echo "[dev] Electron download complete."
-fi
-
-# Ensure vsda stub module is available (required by Pylance for product validation)
-if [[ ! -d "$ROOT/node_modules/vsda" ]]; then
-	cp -r "$ROOT/contrib/coderm/vsda" "$ROOT/node_modules/vsda"
-	echo "[dev] Installed vsda stub module."
 fi
 
 ##
@@ -236,11 +229,10 @@ fi
 echo "[dev] Waiting for initial transpile..."
 TIMEOUT=300  # 5 minutes max
 START_TIME=$(date +%s)
-READY=false
-while [ "$READY" = false ]; do
+while true; do
 	if [ -f "$WATCH_LOG" ]; then
 		if grep -q "Finished transpilation with 0 errors" "$WATCH_LOG" 2>/dev/null; then
-			READY=true
+			break
 		elif grep -q "Finished transpilation with [1-9]" "$WATCH_LOG" 2>/dev/null; then
 			echo "[dev] ERROR: Transpilation completed with errors." >&2
 			cat "$WATCH_LOG" >&2
@@ -248,17 +240,14 @@ while [ "$READY" = false ]; do
 			exit 1
 		fi
 	fi
-	if [ "$READY" = false ]; then
-		CURRENT_TIME=$(date +%s)
-		ELAPSED=$((CURRENT_TIME - START_TIME))
-		if [ $ELAPSED -gt $TIMEOUT ]; then
-			echo "[dev] ERROR: Timeout waiting for initial transpile." >&2
-			kill "$WATCH_PID" 2>/dev/null || true
-			WATCH_PID=""
-			exit 1
-		fi
-		sleep 0.5
+	ELAPSED=$(($(date +%s) - START_TIME))
+	if [ $ELAPSED -gt $TIMEOUT ]; then
+		echo "[dev] ERROR: Timeout waiting for initial transpile." >&2
+		kill "$WATCH_PID" 2>/dev/null || true
+		WATCH_PID=""
+		exit 1
 	fi
+	sleep 0.5
 done
 echo "[dev] Transpilation complete."
 

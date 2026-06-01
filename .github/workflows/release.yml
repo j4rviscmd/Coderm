@@ -90,11 +90,6 @@ jobs:
 
       - run: npm ci
 
-      # Install vsda stub module (required by Pylance for product validation).
-      # The real vsda is proprietary to VS Code and not available in forks.
-      - name: Install vsda stub
-        run: cp -r contrib/coderm/vsda node_modules/vsda
-
       # Build open-remote-ssh from the Coderm fork. The fork uses
       # ManagedResolvedAuthority instead of ResolvedAuthority, eliminating
       # local TCP listeners that trigger Windows firewall dialogs on
@@ -235,9 +230,6 @@ jobs:
           free -h
 
       - run: npm ci
-
-      - name: Install vsda stub
-        run: cp -r contrib/coderm/vsda node_modules/vsda
 
       - name: Build open-remote-ssh extension from fork
         shell: bash
