@@ -7,6 +7,7 @@ import { mainWindow } from '../../../../base/browser/window.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
 import { localize } from '../../../../nls.js';
 import { addDisposableListener } from '../../../../base/browser/dom.js';
@@ -90,6 +91,7 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 	constructor(
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IContextMenuService contextMenuService: IContextMenuService,
+		@IHoverService private readonly hoverService: IHoverService,
 	) {
 		super();
 
@@ -98,6 +100,11 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 			s.textContent = `
 				.${CURSOR_HIDDEN_CLASS},
 				.${CURSOR_HIDDEN_CLASS} * { cursor: none !important; }
+
+				/* Hide sash hover highlight when cursor is auto-hidden */
+				.${CURSOR_HIDDEN_CLASS} .monaco-sash.hover::before {
+					background: none !important;
+				}
 			`;
 		}, this._store);
 
@@ -226,11 +233,14 @@ export class CursorAutoHideController extends Disposable implements IWorkbenchCo
 		this._timer = undefined;
 	}
 
-	/** Adds the CSS class that hides the cursor, if not already hidden. */
+	/** Adds the CSS class that hides the cursor, if not already hidden. Also dismisses any visible hover. */
 	private _hideCursor(): void {
 		if (!this._isHidden) {
 			mainWindow.document.body.classList.add(CURSOR_HIDDEN_CLASS);
 			this._isHidden = true;
+			// Dismiss any visible hover (e.g. terminal link tooltip) when cursor auto-hides.
+			// Alt-locked hovers are respected and will not be dismissed.
+			this.hoverService.hideHover();
 		}
 	}
 
