@@ -68,7 +68,7 @@
 	inset: 0;
 	border: var(--active-pane-border-width, 1px) solid var(--active-pane-border-color, transparent);
 	pointer-events: none;
-	z-index: 100;
+	z-index: 6;
 }
 
 .monaco-workbench .part.editor > .content .editor-group-container.empty  {
