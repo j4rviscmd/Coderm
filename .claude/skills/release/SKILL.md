@@ -25,22 +25,11 @@ model: sonnet
 
 ## Codermバージョニング
 
-Codermはupstream（VS Code）のforkであり、独自のバージョニング方式を採用しています。
+Codermはupstream（VS Code）のforkであり、独自のバージョニング方式を採用しています。詳細は「仕様・制約」セクションを参照してください。
 
-**フォーマット:** `{upstream_major}.{upstream_minor}.{upstream_patch}[-coderm.{coderm_major}.{coderm_minor}.{coderm_patch}]`
-
-**リリース種別とバージョン更新ルール:**
-
-| リリース種別 | バージョン更新 | 例 |
-|---|---|---|
-| upstream追従 | upstreamバージョン + 前回タグのcoderm部をキャリーオーバー | `1.121.0-coderm.0.15.0` → `1.122.0-coderm.0.15.0` |
-| Coderm機能追加 | `coderm_minor++` | `1.121.0-coderm.0.1.0` → `1.121.0-coderm.0.2.0` |
-| Codermバグ修正 | `coderm_patch++` | `1.121.0-coderm.0.1.0` → `1.121.0-coderm.0.1.1` |
-| Coderm破壊的変更 | `coderm_major++` | `1.121.0-coderm.0.1.0` → `1.121.0-coderm.1.0.0` |
+**フォーマット:** `{upstream_major}.{upstream_minor}.{upstream_patch}-coderm.{coderm_major}.{coderm_minor}.{coderm_patch}`
 
 **リリース種別の判定:** コミット内容から自動推定し、ユーザーに提案。ユーザーが最終決定します。
-
-**upstream追従時の注意:** `git merge upstream/main` で `package.json#version` が純粋なupstreamバージョン（例: `1.122.0`）に上書きされます。リリーススキルは前回のリリースタグからcoderm部分（例: `-coderm.0.15.0`）を抽出し、新しいupstreamバージョンに付加してキャリーオーバーします（例: `1.122.0-coderm.0.15.0`）。
 
 ## ガードレール（絶対に守ること）
 
@@ -295,16 +284,16 @@ echo "理由: $type_reason"
 #### 3-2: 次期バージョンの計算
 
 ```bash
-# 現在バージョンをパース
-# フォーマット: {upstream_major}.{upstream_minor}.{upstream_patch}[-coderm.{coderm_major}.{coderm_minor}.{coderm_patch}]
+# 現在バージョンをパース（フォーマットは「仕様・制約」セクション参照）
+# セグメント位置: {1}.{2}.{3}-coderm.{4}.{5}.{6}
 
-# upstream部分を抽出
+# upstream部分（第1-3セグメント）を抽出
 upstream_version=$(echo "$current_version" | sed 's/-coderm.*//')
 upstream_major=$(echo "$upstream_version" | cut -d. -f1)
 upstream_minor=$(echo "$upstream_version" | cut -d. -f2)
 upstream_patch=$(echo "$upstream_version" | cut -d. -f3)
 
-# coderm部分を抽出（サフィックスがない場合は0.0.0）
+# coderm部分（第4-6セグメント）を抽出（サフィックスがない場合は0.0.0）
 if echo "$current_version" | grep -q "-coderm\."; then
   coderm_part=$(echo "$current_version" | sed 's/.*-coderm\.//')
   coderm_major=$(echo "$coderm_part" | cut -d. -f1)
@@ -321,12 +310,12 @@ echo "  upstream: $upstream_major.$upstream_minor.$upstream_patch"
 echo "  coderm: $coderm_major.$coderm_minor.$coderm_patch"
 
 # リリース種別に基づいて次期バージョンを計算
+# 変更ルールの詳細は「仕様・制約」セクションのテーブルを参照
 case "$suggested_type" in
   upstream)
-    # upstream追従: package.jsonのupstream部分 + 前回タグのcoderm部をキャリーオーバー
-    # package.jsonはマージで純粋なupstreamバージョン（例: 1.122.0）になっている
-    # 前回タグからcoderm部分を取得してキャリーオーバーする
-    # NOTE: $latest_tag はStep 2で取得済み
+    # upstream追従: 新upstream部 + 前回タグのcoderm部をキャリーオーバー
+    # package.jsonはマージで純粋なupstreamバージョンになっているため、
+    # 前回タグ（$latest_tag、Step 2で取得済み）からcoderm部分を取得して付加
     if [ -n "$latest_tag" ] && echo "$latest_tag" | grep -q "\-coderm\."; then
       prev_coderm_part=$(echo "$latest_tag" | sed 's/.*-coderm\.//')
       next_version="${upstream_major}.${upstream_minor}.${upstream_patch}-coderm.${prev_coderm_part}"
@@ -338,14 +327,17 @@ case "$suggested_type" in
     fi
     ;;
   coderm-major)
+    # 第4セグメント+1、第5-6を0にリセット
     next_version="${upstream_major}.${upstream_minor}.${upstream_patch}-coderm.$((coderm_major + 1)).0.0"
     version_reason="Coderm破壊的変更"
     ;;
   coderm-minor)
+    # 第5セグメント+1、第6を0にリセット
     next_version="${upstream_major}.${upstream_minor}.${upstream_patch}-coderm.${coderm_major}.$((coderm_minor + 1)).0"
     version_reason="Coderm機能追加"
     ;;
   coderm-patch)
+    # 第6セグメントのみ+1（第4-5はそのまま）
     next_version="${upstream_major}.${upstream_minor}.${upstream_patch}-coderm.${coderm_major}.${coderm_minor}.$((coderm_patch + 1))"
     version_reason="Codermバグ修正"
     ;;
@@ -372,7 +364,18 @@ if [ "$initial_release" = true ] && [ "$suggested_type" != "upstream" ]; then
 fi
 ```
 
-#### 3-3: 対話的な確認
+#### 3-3: バージョン計算の自己検証（必須）
+
+**AskUserQuestionを表示する前に、以下の検証を必ず実行してください。**
+
+計算した `next_version` が正しいことを、セグメントごとに照合します:
+
+1. 現在バージョン `{A.B.C-coderm.D.E.F}` の各セグメントを確認
+2. リリース種別に対応するセグメントのみが変更されているか確認（「仕様・制約」セクションのテーブル参照）
+3. **よくある誤り**: coderm-patchなのに第5セグメントを+1して `0.19.0` にしてしまう → 正しくは第6セグメントのみ+1で `0.18.2`
+4. 検証OKの場合のみ、次のAskUserQuestionに進む
+
+#### 3-4: 対話的な確認
 
 AskUserQuestionツールでユーザーに確認します。
 
@@ -405,14 +408,7 @@ v{next_version}
 
 ```bash
 # バージョンを更新（Coderm版）
-#
-# Codermバージョニング対応の正規表現:
-# - 標準フォーマット: "1.121.0"
-# - Codermフォーマット: "1.121.0-coderm.0.1.0"
-# 両方のフォーマットにマッチする正規表現を使用します。
-#
-# upstream追従リリースの場合: package.jsonが純粋なupstreamバージョン（例: "1.122.0"）を持っているため、
-# coderm部をキャリーオーバーしたバージョン（例: "1.122.0-coderm.0.15.0"）に更新する。
+# 正規表現は標準フォーマット（1.121.0）とCodermフォーマット（1.121.0-coderm.0.1.0）の両方にマッチ
 if [ "$next_version" != "$current_version" ]; then
   sed -i '' -E 's/"version"\s*:\s*"[0-9]+\.[0-9]+\.[0-9]+(-coderm\.[0-9]+\.[0-9]+\.[0-9]+)?"/"version": "'"$next_version"'"/' "$version_file"
   echo ""
@@ -635,30 +631,33 @@ GitHub Release作成・タグプッシュはCI/CDが自動実行します（手�
 
 Codermはupstream（VS Code）のforkであり、独自のバージョニング方式を使用します。
 
-**フォーマット:** `{upstream_major}.{upstream_minor}.{upstream_patch}[-coderm.{coderm_major}.{coderm_minor}.{coderm_patch}]`
+**フォーマット:** `{upstream_major}.{upstream_minor}.{upstream_patch}-coderm.{coderm_major}.{coderm_minor}.{coderm_patch}`
 
-| フィールド | 意味 |
-|---|---|
-| `{upstream_major}.{upstream_minor}.{upstream_patch}` | upstream VS Codeバージョン |
-| `coderm_major` | Coderm破壊的変更（当面`0`固定） |
-| `coderm_minor` | Coderm機能追加 |
-| `coderm_patch` | Codermバグ修正 |
+セグメント位置: `{1}.{2}.{3}-coderm.{4}.{5}.{6}`
+
+| フィールド | セグメント位置 | 意味 |
+|---|---|---|
+| `{upstream_major}.{upstream_minor}.{upstream_patch}` | 第1-3 | upstream VS Codeバージョン |
+| `coderm_major` | 第4 | Coderm破壊的変更（当面`0`固定） |
+| `coderm_minor` | 第5 | Coderm機能追加 |
+| `coderm_patch` | 第6 | Codermバグ修正 |
 
 **リリース種別の判定とバージョン更新:**
 
-| コミット内容 | リリース種別 | バージョン更新 |
-|---|---|---|
-| upstreamマージコミットあり | upstream追従 | 新upstream部 + 前回タグのcoderm部をキャリーオーバー |
-| `feat:` 含む（upstreamマージなし） | Coderm機能追加 | `coderm_minor++` |
-| `fix:` のみ | Codermバグ修正 | `coderm_patch++` |
-| `BREAKING CHANGE` 含む | Coderm破壊的変更 | `coderm_major++` |
-| `refactor:` | coderm_patch | リファクタリング（機能追加でない場合） |
-| `docs:`, `chore:`, `test:` | coderm_patch | ドキュメント・雑務・テスト |
+コミット内容からリリース種別を自動判定します。判定優先度は上から順です。
+
+| コミット内容（判定優先度順） | リリース種別 | バージョン更新 | 変更セグメント |
+|---|---|---|---|
+| upstreamマージコミットあり | upstream追従 | 新upstream部 + 前回タグのcoderm部をキャリーオーバー | 第1-3 |
+| `BREAKING CHANGE` 含む | Coderm破壊的変更 | `coderm_major++` | 第4を+1, 第5-6を0 |
+| `feat:` 含む（upstreamマージなし） | Coderm機能追加 | `coderm_minor++` | 第5を+1, 第6を0 |
+| `fix:` のみ | Codermバグ修正 | `coderm_patch++` | **第6のみ+1** |
+| `refactor:`, `docs:`, `chore:`, `test:` | Codermバグ修正 | `coderm_patch++` | 第6のみ+1 |
 
 **例:**
 - upstream追従: `1.121.0-coderm.0.15.0` → `1.122.0-coderm.0.15.0`（coderm部をキャリーオーバー）
-- Coderm機能追加: `1.121.0-coderm.0.1.0` → `1.121.0-coderm.0.2.0`
-- Codermバグ修正: `1.121.0-coderm.0.1.0` → `1.121.0-coderm.0.1.1`
+- Coderm機能追加: `1.121.0-coderm.0.1.0` → `1.121.0-coderm.0.2.0`（第5セグメント+1）
+- Codermバグ修正: `1.121.0-coderm.0.1.0` → `1.121.0-coderm.0.1.1`（**第6セグメントのみ+1**）
 
 ### バージョンファイル
 
@@ -684,13 +683,4 @@ PRがmainにマージされると、release.ymlが自動的に以下を実行し
 
 ### Conventional Commits 解析
 
-以下のコミットタイプを認識し、バージョン更新タイプを決定します：
-
-| コミットタイプ | バージョン更新 | 備考 |
-|---|---|---|
-| upstreamマージコミット | upstream追従 | 新upstream部 + 前回タグのcoderm部キャリーオーバー |
-| `BREAKING CHANGE` | coderm_major | フッターまたは本文に含まれる場合 |
-| `feat:` | coderm_minor | 新機能追加 |
-| `fix:` | coderm_patch | バグ修正 |
-| `refactor:` | coderm_patch | リファクタリング（機能追加でない場合） |
-| `docs:`, `chore:`, `test:` | coderm_patch | ドキュメント・雑務・テスト |
+上記テーブルの通り、コミット内容からバージョン更新タイプを決定します。判定優先度: upstreamマージ > BREAKING CHANGE > feat > fix > その他。
