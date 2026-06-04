@@ -1,10 +1,11 @@
+<!-- markdownlint-disable MD036 -->
 <div align="center">
 
 # Coderm
 
 <img src="./.github/assets/workbench.png" alt="Coderm">
 
-日本語 | [English](README.en.md)
+[日本語](README.ja.md) | English
 
 [![Windows](https://img.shields.io/badge/Windows-Supported-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/j4rviscmd/Coderm/releases/latest/download/CodermSetup-x64.exe)
 [![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/j4rviscmd/Coderm/releases/latest/download/Coderm-arm64.dmg)
@@ -15,29 +16,31 @@
 
 ---
 
-**VS Codeのフォーク。本家にはないUI/UX改善を追加した(していく)エディタです。**
+**Coderm = VS Code + Terminal**
+
+A customized fork of VS Code with UI/UX improvements not found in upstream.
 
 </div>
 
 ---
 
-## モチベーション
+## Motivation
 
-- 本家VS Codeにはマージされない・されにくいUI/UX改善を爆速に・自由に組み込みたい
-- Vim/Neovimユーザーが快適に使える設定を提供したい
-- 本家の最新機能・セキュリティパッチを定期的(月1想定)にマージして追従する
+- Freely integrate UX improvements that are unlikely to be merged into upstream VS Code
+- Provide settings and keybindings optimized for Vim/Neovim users
+- Regularly merge upstream features and security patches (monthly cadence)
 
 ---
 
-## インストール
+## Installation
 
-| プラットフォーム      | インストーラ                                                                               |
+| Platform              | Installer                                                                                  |
 | :-------------------- | :----------------------------------------------------------------------------------------- |
 | macOS (Apple Silicon) | [`.dmg`](https://github.com/j4rviscmd/Coderm/releases/latest/download/Coderm-arm64.dmg)    |
 | Windows (x64)         | [`.exe`](https://github.com/j4rviscmd/Coderm/releases/latest/download/CodermSetup-x64.exe) |
 
 > [!NOTE]
-> macOSビルドはad-hoc署名（Apple公証なし）です。初回起動時に**システム設定 > プライバシーとセキュリティ**から「このまま開く」をクリックしてください。または以下を実行:
+> macOS builds use ad-hoc code signing (not Apple-notarized). On first launch, go to **System Settings > Privacy & Security** and click **Open Anyway**. Alternatively, run:
 >
 > ```sh
 > xattr -dr com.apple.quarantine "/Applications/Coderm.app"
@@ -45,55 +48,55 @@
 
 ---
 
-## Coderm独自設定
+## Coderm-Specific Settings
 
-本家VS Codeにはない、Coderm固有の設定項目です。
+Settings unique to Coderm that are not available in upstream VS Code.
 
-| 設定キー                                         | 型        | デフォルト | 説明                                             |
-| :----------------------------------------------- | :-------- | :--------- | :----------------------------------------------- |
-| `coderm.activePaneBorder.enabled`                | `boolean` | `true`     | アクティブペインの境界線ハイライトを有効化       |
-| `coderm.activePaneBorder.color`                  | `string`  | `""`       | 境界線の色（空文字 = テーマの`focusBorder`）     |
-| `coderm.activePaneBorder.width`                  | `number`  | `1`        | 境界線の太さ（px, 1–5）                          |
-| `coderm.cursorAutoHide.enabled`                  | `boolean` | `true`     | 無操作時にマウスカーソルを自動的に非表示にする   |
-| `coderm.cursorAutoHide.delay`                    | `number`  | `3000`     | カーソル非表示までの遅延（ms）                   |
-| `coderm.cursorAutoHide.suppressHover`            | `boolean` | `true`     | カーソル非表示時にエディタhoverを抑制する        |
-| `coderm.workbench.editor.editorGroupIndexInTab`  | `boolean` | `false`    | タブにエディタグループ番号`[N]`を表示            |
-| `coderm.workbench.editor.autoMaximizeOnFocus`    | `boolean` | `true`     | 最小ペインにフォーカス時の自動最大化を制御       |
-| `coderm.workbench.editor.preventNewGroupOnFocus` | `boolean` | `false`    | フォーカス時に新しいエディタグループの作成を抑制 |
-| `coderm.workbench.editor.resizeIncrement`        | `number`  | `60`       | ペインリサイズの増分（px）                       |
-| `coderm.terminal.horizontalPadding`              | `number`  | `20`       | ターミナルの水平パディング（px, 0–100）          |
-| `coderm.quickOpen.includeTerminals`              | `boolean` | `true`     | Quick Openにターミナルエディタを含める           |
-| `coderm.updateDownloadProgress.enabled`          | `boolean` | `true`     | アップデートダウンロード時に進捗通知を表示       |
-| `coderm.terminal.closeEmptyPaneOnKill`           | `boolean` | `true`     | ターミナルkill時に空ペインを閉じてフォーカス復帰 |
-
----
-
-## Coderm独自コマンド
-
-| コマンド                                  | 説明                     |
-| :---------------------------------------- | :----------------------- |
-| `coderm.workbench.editor.resizePaneUp`    | ペインを上方向にリサイズ |
-| `coderm.workbench.editor.resizePaneDown`  | ペインを下方向にリサイズ |
-| `coderm.workbench.editor.resizePaneLeft`  | ペインを左方向にリサイズ |
-| `coderm.workbench.editor.resizePaneRight` | ペインを右方向にリサイズ |
+| Setting                                          | Type      | Default | Description                                         |
+| :----------------------------------------------- | :-------- | :------ | :-------------------------------------------------- |
+| `coderm.activePaneBorder.enabled`                | `boolean` | `true`  | Enable active pane border highlight                 |
+| `coderm.activePaneBorder.color`                  | `string`  | `""`    | Border color (empty = theme's `focusBorder`)        |
+| `coderm.activePaneBorder.width`                  | `number`  | `1`     | Border thickness (px, 1–5)                          |
+| `coderm.cursorAutoHide.enabled`                  | `boolean` | `true`  | Auto-hide mouse cursor after inactivity             |
+| `coderm.cursorAutoHide.delay`                    | `number`  | `3000`  | Delay before hiding cursor (ms)                     |
+| `coderm.cursorAutoHide.suppressHover`            | `boolean` | `true`  | Suppress editor hover when cursor is auto-hidden    |
+| `coderm.workbench.editor.editorGroupIndexInTab`  | `boolean` | `false` | Show editor group index `[N]` in tab                |
+| `coderm.workbench.editor.autoMaximizeOnFocus`    | `boolean` | `true`  | Control auto-maximize when focusing smallest pane   |
+| `coderm.workbench.editor.preventNewGroupOnFocus` | `boolean` | `false` | Prevent creating new editor group on focus          |
+| `coderm.workbench.editor.resizeIncrement`        | `number`  | `60`    | Pane resize increment (px)                          |
+| `coderm.terminal.horizontalPadding`              | `number`  | `20`    | Terminal horizontal padding (px, 0–100)             |
+| `coderm.quickOpen.includeTerminals`              | `boolean` | `true`  | Include terminal editors in Quick Open              |
+| `coderm.updateDownloadProgress.enabled`          | `boolean` | `true`  | Show progress notification during update download   |
+| `coderm.terminal.closeEmptyPaneOnKill`           | `boolean` | `true`  | Close empty pane and restore focus on terminal kill |
 
 ---
 
-## 既知の制限事項
+## Coderm-Specific Commands
 
-| 機能                                 | 制限                                   | 備考                                                                                                          |
-| :----------------------------------- | :------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
-| Settings Sync                        | 本家VS Code限定サービスのため利用不可  |                                                                                                               |
-| `ms-python.vscode-pylance`           | プロプライエタリ依存のためブロック     | [BasedPyright](https://marketplace.visualstudio.com/items?itemName=detachhead.basedpyright)を使用してください |
-| `ms-vscode-remote.remote-ssh`        | 本家サーバーインフラ依存のためブロック | ビルトインの`Open Remote - SSH`を使用してください                                                             |
-| `ms-vscode-remote.remote-ssh-edit`   | 同上                                   |                                                                                                               |
-| `ms-vscode.remote-explorer`          | 同上                                   |                                                                                                               |
-| `ms-vscode-remote.remote-containers` | 同上                                   |                                                                                                               |
-| `ms-vscode-remote.remote-wsl`        | 同上                                   |                                                                                                               |
-| `ms-vscode.remote-tunnels`           | 同上                                   |                                                                                                               |
+| Command                                   | Description           |
+| :---------------------------------------- | :-------------------- |
+| `coderm.workbench.editor.resizePaneUp`    | Resize pane upward    |
+| `coderm.workbench.editor.resizePaneDown`  | Resize pane downward  |
+| `coderm.workbench.editor.resizePaneLeft`  | Resize pane leftward  |
+| `coderm.workbench.editor.resizePaneRight` | Resize pane rightward |
 
 ---
 
-## ライセンス
+## Known Limitations
 
-MIT License — [LICENSE.txt](LICENSE.txt)を参照。
+| Feature                              | Limitation                                    | Notes                                                                                                   |
+| :----------------------------------- | :-------------------------------------------- | :------------------------------------------------------------------------------------------------------ |
+| Settings Sync                        | Unavailable (exclusive to official VS Code)   |                                                                                                         |
+| `ms-python.vscode-pylance`           | Blocked (depends on proprietary module)       | Use [BasedPyright](https://marketplace.visualstudio.com/items?itemName=detachhead.basedpyright) instead |
+| `ms-vscode-remote.remote-ssh`        | Blocked (depends on proprietary server infra) | Use the built-in `Open Remote - SSH` instead                                                            |
+| `ms-vscode-remote.remote-ssh-edit`   | Same as above                                 |                                                                                                         |
+| `ms-vscode.remote-explorer`          | Same as above                                 |                                                                                                         |
+| `ms-vscode-remote.remote-containers` | Same as above                                 |                                                                                                         |
+| `ms-vscode-remote.remote-wsl`        | Same as above                                 |                                                                                                         |
+| `ms-vscode.remote-tunnels`           | Same as above                                 |                                                                                                         |
+
+---
+
+## License
+
+MIT License — see [LICENSE.txt](LICENSE.txt).
