@@ -52,22 +52,23 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 
 本家VS Codeにはない、Coderm固有の設定項目です。
 
-| 設定キー                                         | 型        | デフォルト | 説明                                             |
-| :----------------------------------------------- | :-------- | :--------- | :----------------------------------------------- |
-| `coderm.activePaneBorder.enabled`                | `boolean` | `true`     | アクティブペインの境界線ハイライトを有効化       |
-| `coderm.activePaneBorder.color`                  | `string`  | `""`       | 境界線の色（空文字 = テーマの`focusBorder`）     |
-| `coderm.activePaneBorder.width`                  | `number`  | `1`        | 境界線の太さ（px, 1–5）                          |
-| `coderm.cursorAutoHide.enabled`                  | `boolean` | `true`     | 無操作時にマウスカーソルを自動的に非表示にする   |
-| `coderm.cursorAutoHide.delay`                    | `number`  | `3000`     | カーソル非表示までの遅延（ms）                   |
-| `coderm.cursorAutoHide.suppressHover`            | `boolean` | `true`     | カーソル非表示時にエディタhoverを抑制する        |
-| `coderm.workbench.editor.editorGroupIndexInTab`  | `boolean` | `false`    | タブにエディタグループ番号`[N]`を表示            |
-| `coderm.workbench.editor.autoMaximizeOnFocus`    | `boolean` | `true`     | 最小ペインにフォーカス時の自動最大化を制御       |
-| `coderm.workbench.editor.preventNewGroupOnFocus` | `boolean` | `false`    | フォーカス時に新しいエディタグループの作成を抑制 |
-| `coderm.workbench.editor.resizeIncrement`        | `number`  | `60`       | ペインリサイズの増分（px）                       |
-| `coderm.terminal.horizontalPadding`              | `number`  | `20`       | ターミナルの水平パディング（px, 0–100）          |
-| `coderm.quickOpen.includeTerminals`              | `boolean` | `true`     | Quick Openにターミナルエディタを含める           |
-| `coderm.updateDownloadProgress.enabled`          | `boolean` | `true`     | アップデートダウンロード時に進捗通知を表示       |
-| `coderm.terminal.closeEmptyPaneOnKill`           | `boolean` | `true`     | ターミナルkill時に空ペインを閉じてフォーカス復帰 |
+| 設定キー                                         | 型         | デフォルト                                       | 説明                                               |
+| :----------------------------------------------- | :--------- | :----------------------------------------------- | :------------------------------------------------- |
+| `coderm.activePaneBorder.enabled`                | `boolean`  | `true`                                           | アクティブペインの境界線ハイライトを有効化         |
+| `coderm.activePaneBorder.color`                  | `string`   | `""`                                             | 境界線の色（空文字 = テーマの`focusBorder`）       |
+| `coderm.activePaneBorder.width`                  | `number`   | `1`                                              | 境界線の太さ（px, 1–5）                            |
+| `coderm.cursorAutoHide.enabled`                  | `boolean`  | `true`                                           | 無操作時にマウスカーソルを自動的に非表示にする     |
+| `coderm.cursorAutoHide.delay`                    | `number`   | `3000`                                           | カーソル非表示までの遅延（ms）                     |
+| `coderm.cursorAutoHide.suppressHover`            | `boolean`  | `true`                                           | カーソル非表示時にエディタhoverを抑制する          |
+| `coderm.workbench.editor.editorGroupIndexInTab`  | `boolean`  | `false`                                          | タブにエディタグループ番号`[N]`を表示              |
+| `coderm.workbench.editor.autoMaximizeOnFocus`    | `boolean`  | `true`                                           | 最小ペインにフォーカス時の自動最大化を制御         |
+| `coderm.workbench.editor.preventNewGroupOnFocus` | `boolean`  | `false`                                          | フォーカス時に新しいエディタグループの作成を抑制   |
+| `coderm.extensions.eagerActivation`              | `string[]` | `["asvetliakov.vscode-neovim", "vscodevim.vim"]` | 起動時に即座にアクティベートする拡張機能IDのリスト |
+| `coderm.workbench.editor.resizeIncrement`        | `number`   | `60`                                             | ペインリサイズの増分（px）                         |
+| `coderm.terminal.horizontalPadding`              | `number`   | `20`                                             | ターミナルの水平パディング（px, 0–100）            |
+| `coderm.quickOpen.includeTerminals`              | `boolean`  | `true`                                           | Quick Openにターミナルエディタを含める             |
+| `coderm.updateDownloadProgress.enabled`          | `boolean`  | `true`                                           | アップデートダウンロード時に進捗通知を表示         |
+| `coderm.terminal.closeEmptyPaneOnKill`           | `boolean`  | `true`                                           | ターミナルkill時に空ペインを閉じてフォーカス復帰   |
 
 ---
 

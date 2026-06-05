@@ -7,15 +7,57 @@ import { IStringDictionary } from '../../../base/common/collections.js';
 import { onUnexpectedError } from '../../../base/common/errors.js';
 import { ExtensionIdentifier, IExtensionDescription } from '../../extensions/common/extensions.js';
 
+/**
+ * A function that maps extension contribution values to their corresponding
+ * implicit activation event strings (e.g. `onCommand:...`, `onLanguage:...`).
+ *
+ * @typeParam T - The concrete contribution type for a given extension point.
+ */
 export interface IActivationEventsGenerator<T> {
 	(contributions: readonly T[]): Iterable<string>;
 }
 
+/**
+ * Manages implicit activation events for extensions.
+ *
+ * VS Code extensions declare activation events in `package.json`, but certain
+ * extension contributions (e.g. commands, languages, views) implicitly trigger
+ * activation. This class collects those implicit events by iterating registered
+ * generators for each extension point found in an extension's `contributes` field.
+ *
+ * Must be used on the **renderer process** where all extension points and their
+ * generators are known.
+ */
 export class ImplicitActivationEventsImpl {
 
+	/** Maps extension point names to their implicit activation event generators. */
 	private readonly _generators = new Map<string, IActivationEventsGenerator<unknown>>();
+
+	/** Per-extension cache of resolved activation event arrays. */
 	private readonly _cache = new WeakMap<IExtensionDescription, string[]>();
 
+	/**
+	 * Coderm: extension IDs that should activate eagerly (treated as `*`).
+	 * Populated from the `coderm.extensions.eagerActivation` setting.
+	 */
+	private _eagerExtensions = new Set<string>();
+
+	/**
+	 * Coderm: Register extension IDs whose activation events should include `*`,
+	 * forcing eager (startup) activation regardless of their package.json declaration.
+	 */
+	public setEagerExtensions(ids: ReadonlySet<string>): void {
+		this._eagerExtensions = new Set(ids);
+	}
+
+	/**
+	 * Register a generator that produces implicit activation events for a given
+	 * extension point.
+	 *
+	 * @param extensionPointName - The `contributes` key (e.g. `"commands"`, `"languages"`).
+	 * @param generator - Function that receives the contribution values and returns
+	 *   the corresponding activation event strings.
+	 */
 	public register<T>(extensionPointName: string, generator: IActivationEventsGenerator<T>): void {
 		this._generators.set(extensionPointName, generator as IActivationEventsGenerator<unknown>);
 	}
@@ -46,6 +88,16 @@ export class ImplicitActivationEventsImpl {
 		return result;
 	}
 
+	/**
+	 * Build the full activation event list for a single extension.
+	 *
+	 * Combines events from:
+	 * 1. `activationEvents` in `package.json` (with `onUri` expansion)
+	 * 2. Implicit events from registered generators for each contribution key
+	 * 3. Coderm: `*` injected for extensions listed in {@link _eagerExtensions}
+	 *
+	 * Non-host extensions (no `main`/`browser`) get an empty array.
+	 */
 	private _readActivationEvents(desc: IExtensionDescription): string[] {
 		if (typeof desc.main === 'undefined' && typeof desc.browser === 'undefined') {
 			return [];
@@ -80,8 +132,17 @@ export class ImplicitActivationEventsImpl {
 			}
 		}
 
+		// Coderm: inject `*` for eager extensions to force startup activation
+		if (this._eagerExtensions.has(ExtensionIdentifier.toKey(desc.identifier)) && !activationEvents.includes('*')) {
+			activationEvents.push('*');
+		}
+
 		return activationEvents;
 	}
 }
 
+/**
+ * Singleton instance shared across the renderer process.
+ * Extension points register their generators here during startup.
+ */
 export const ImplicitActivationEvents: ImplicitActivationEventsImpl = new ImplicitActivationEventsImpl();
