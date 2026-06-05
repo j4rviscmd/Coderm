@@ -13,6 +13,7 @@ import './autoMaximizeActions.js';
 import './cursorAutoHide.js';
 import './defaultThemeInstaller.js';
 import './devTitlePrefix.js';
+import './eagerExtensions.js';
 import './editorGroupIndex.js';
 import './gitWorktreeDefaults.js';
 import './preventNewGroupOnFocus.js';

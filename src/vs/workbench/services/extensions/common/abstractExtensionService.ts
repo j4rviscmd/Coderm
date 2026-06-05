@@ -126,6 +126,12 @@ export abstract class AbstractExtensionService extends Disposable implements IEx
 		this._hasLocalProcess = options.hasLocalProcess;
 		this._allowRemoteExtensionsInLocalWebWorker = options.allowRemoteExtensionsInLocalWebWorker;
 
+		// Coderm: Force eager (startup) activation for configured extensions
+		const codermEagerExts = this._configurationService.getValue<string[]>('coderm.extensions.eagerActivation');
+		if (Array.isArray(codermEagerExts) && codermEagerExts.length > 0) {
+			ImplicitActivationEvents.setEagerExtensions(new Set(codermEagerExts));
+		}
+
 		// help the file service to activate providers by activating extensions by file system event
 		this._register(this._fileService.onWillActivateFileSystemProvider(e => {
 			if (e.scheme !== Schemas.vscodeRemote) {
