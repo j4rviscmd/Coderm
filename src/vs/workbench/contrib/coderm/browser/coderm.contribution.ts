@@ -11,6 +11,7 @@
 import './activePaneBorder.js';
 import './autoMaximizeActions.js';
 import './cursorAutoHide.js';
+import './downloadFile.js';
 import './defaultThemeInstaller.js';
 import './devTitlePrefix.js';
 import './eagerExtensions.js';
