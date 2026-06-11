@@ -81,6 +81,9 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.workbench.editor.resizePaneLeft`  | Resize pane leftward  |
 | `coderm.workbench.editor.resizePaneRight` | Resize pane rightward |
 
+> [!TIP]
+> **[psmux](https://github.com/psmux/psmux) users:** Set `terminal.integrated.enableWin32InputMode: true` so that psmux and similar terminal multiplexers can correctly distinguish modified key events (e.g., Ctrl+J) in the integrated terminal.
+
 ---
 
 ## Known Limitations
