@@ -57,6 +57,7 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.activePaneBorder.enabled`                | `boolean`  | `true`                                           | Enable active pane border highlight                 |
 | `coderm.activePaneBorder.color`                  | `string`   | `""`                                             | Border color (empty = theme's `focusBorder`)        |
 | `coderm.activePaneBorder.width`                  | `number`   | `1`                                              | Border thickness (px, 1–5)                          |
+| `coderm.activePaneBorder.radius`                 | `number`   | `5`                                              | Corner radius (px, 0–20; 0 = square corners)        |
 | `coderm.cursorAutoHide.enabled`                  | `boolean`  | `true`                                           | Auto-hide mouse cursor after inactivity             |
 | `coderm.cursorAutoHide.delay`                    | `number`   | `3000`                                           | Delay before hiding cursor (ms)                     |
 | `coderm.cursorAutoHide.suppressHover`            | `boolean`  | `true`                                           | Suppress editor hover when cursor is auto-hidden    |

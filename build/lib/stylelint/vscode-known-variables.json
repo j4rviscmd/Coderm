@@ -987,6 +987,7 @@
 		"--testMessageDecorationFontSize",
 		"--active-pane-border-color",
 			"--active-pane-border-width",
+			"--active-pane-border-radius",
 			"--title-border-bottom-color",
 		"--title-wco-width",
 		"--update-progress",

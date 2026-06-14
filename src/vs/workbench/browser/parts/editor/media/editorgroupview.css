@@ -67,6 +67,7 @@
 	position: absolute;
 	inset: 0;
 	border: var(--active-pane-border-width, 1px) solid var(--active-pane-border-color, transparent);
+	border-radius: var(--active-pane-border-radius, 0);
 	pointer-events: none;
 	z-index: 35; /* above xterm-screen (z-index:31), below hover widgets (z-index:40) */
 }

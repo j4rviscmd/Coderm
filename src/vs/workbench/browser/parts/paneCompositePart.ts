@@ -228,6 +228,8 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
 				container.style.setProperty('--active-pane-border-color', borderColor);
 				const width = this.configurationService.getValue<number>('coderm.activePaneBorder.width') ?? 1;
 				container.style.setProperty('--active-pane-border-width', `${width}px`);
+				const radius = this.configurationService.getValue<number>('coderm.activePaneBorder.radius') ?? 0;
+				container.style.setProperty('--active-pane-border-radius', `${radius}px`);
 				return;
 			}
 		}
@@ -235,6 +237,7 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
 		container.classList.remove('active-pane-border');
 		container.style.removeProperty('--active-pane-border-color');
 		container.style.removeProperty('--active-pane-border-width');
+		container.style.removeProperty('--active-pane-border-radius');
 	}
 
 	private onDidOpen(composite: IComposite): void {

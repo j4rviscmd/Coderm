@@ -15,6 +15,7 @@
  * - `coderm.activePaneBorder.enabled` — toggle the feature on/off
  * - `coderm.activePaneBorder.color`  — override border color (hex string); falls back to theme's `focusBorder` when empty
  * - `coderm.activePaneBorder.width`  — border thickness in pixels (1-5)
+ * - `coderm.activePaneBorder.radius` — corner radius in pixels (0-20, 0 = square corners)
  */
 
 import { localize } from '../../../../nls.js';
@@ -44,6 +45,13 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
 				'minimum': 1,
 				'maximum': 5,
 				'description': localize('activePaneBorderWidth', "Controls the width in pixels of the active pane border.")
+			},
+			'coderm.activePaneBorder.radius': {
+				'type': 'number',
+				'default': 5,
+				'minimum': 0,
+				'maximum': 20,
+				'description': localize('activePaneBorderRadius', "Controls the corner radius in pixels of the active pane border. 0 keeps square corners.")
 			}
 		}
 	});
