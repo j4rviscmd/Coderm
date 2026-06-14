@@ -82,6 +82,9 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.workbench.editor.resizePaneLeft`  | ペインを左方向にリサイズ |
 | `coderm.workbench.editor.resizePaneRight` | ペインを右方向にリサイズ |
 
+> [!TIP]
+> **[psmux](https://github.com/psmux/psmux)利用者向け:** `terminal.integrated.enableWin32InputMode: true` を設定すると、psmuxなどのターミナルマルチプレクサで修飾キー付きキーイベント（Ctrl+J等）を正しく区別できるようになります。
+
 ---
 
 ## 既知の制限事項
