@@ -2172,15 +2172,19 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 				this.element.style.setProperty('--active-pane-border-color', borderColor);
 				const width = this.configurationService.getValue<number>('coderm.activePaneBorder.width') ?? 1;
 				this.element.style.setProperty('--active-pane-border-width', `${width}px`);
+				const radius = this.configurationService.getValue<number>('coderm.activePaneBorder.radius') ?? 0;
+				this.element.style.setProperty('--active-pane-border-radius', `${radius}px`);
 			} else {
 				this.element.classList.remove('active-pane-border');
 				this.element.style.removeProperty('--active-pane-border-color');
 				this.element.style.removeProperty('--active-pane-border-width');
+				this.element.style.removeProperty('--active-pane-border-radius');
 			}
 		} else {
 			this.element.classList.remove('active-pane-border');
 			this.element.style.removeProperty('--active-pane-border-color');
 			this.element.style.removeProperty('--active-pane-border-width');
+			this.element.style.removeProperty('--active-pane-border-radius');
 		}
 	}
 

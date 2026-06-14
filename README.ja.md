@@ -57,6 +57,7 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.activePaneBorder.enabled`                | `boolean`  | `true`                                           | アクティブペインの境界線ハイライトを有効化         |
 | `coderm.activePaneBorder.color`                  | `string`   | `""`                                             | 境界線の色（空文字 = テーマの`focusBorder`）       |
 | `coderm.activePaneBorder.width`                  | `number`   | `1`                                              | 境界線の太さ（px, 1–5）                            |
+| `coderm.activePaneBorder.radius`                 | `number`   | `5`                                              | 角丸半径（px, 0–20、0 = 角丸なし）                |
 | `coderm.cursorAutoHide.enabled`                  | `boolean`  | `true`                                           | 無操作時にマウスカーソルを自動的に非表示にする     |
 | `coderm.cursorAutoHide.delay`                    | `number`   | `3000`                                           | カーソル非表示までの遅延（ms）                     |
 | `coderm.cursorAutoHide.suppressHover`            | `boolean`  | `true`                                           | カーソル非表示時にエディタhoverを抑制する          |
