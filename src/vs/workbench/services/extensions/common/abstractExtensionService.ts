@@ -126,11 +126,34 @@ export abstract class AbstractExtensionService extends Disposable implements IEx
 		this._hasLocalProcess = options.hasLocalProcess;
 		this._allowRemoteExtensionsInLocalWebWorker = options.allowRemoteExtensionsInLocalWebWorker;
 
-		// Coderm: Force eager (startup) activation for configured extensions
-		const codermEagerExts = this._configurationService.getValue<string[]>('coderm.extensions.eagerActivation');
-		if (Array.isArray(codermEagerExts) && codermEagerExts.length > 0) {
-			ImplicitActivationEvents.setEagerExtensions(new Set(codermEagerExts));
-		}
+		// Coderm: Seed eager-extension list as early as possible. The value may
+		// still be `undefined` here when the configuration registry has not yet
+		// been initialized (observed on slow Windows cold starts); the authoritative
+		// activation happens in `_activateEagerExtensions()` after `_initialize()`.
+		// Why: This best-effort seed is kept even though it may be a no-op on Windows cold starts.
+		// On macOS the config is typically loaded by this point, so the `*` injection in
+		// `ImplicitActivationEvents` wins before any extension scan reads cached events.
+		// Caution: Do not rely on this call alone — on Windows the seed can be empty, which
+		// is exactly why `_activateEagerExtensions()` is also invoked after `_initialize()`.
+		this._refreshEagerExtensionConfig();
+
+		// Coderm: React to setting changes. Two effects:
+		//   - `_refreshEagerExtensionConfig()` updates the `*` injection map
+		//     used by future extension scans (cached entries are NOT re-
+		//     evaluated, by design — see `ImplicitActivationEvents.setEagerExtensions`).
+		//   - `_activateEagerExtensions()` directly force-activates any newly
+		//     added IDs via `activateById`. Already-active extensions are
+		//     idempotent. Removed IDs are not deactivated (by design).
+		// Why: Without the explicit `affectsConfiguration` filter, `onDidChangeConfiguration` fires
+		// for every keystroke in `settings.json` (it emits the entire dirty document). Re-running
+		// `_activateEagerExtensions()` on unrelated changes would be wasted work and could race
+		// with the extension host's own activation bookkeeping.
+		this._register(this._configurationService.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('coderm.extensions.eagerActivation')) {
+				this._refreshEagerExtensionConfig();
+				this._activateEagerExtensions();
+			}
+		}));
 
 		// help the file service to activate providers by activating extensions by file system event
 		this._register(this._fileService.onWillActivateFileSystemProvider(e => {
@@ -487,7 +510,80 @@ export abstract class AbstractExtensionService extends Disposable implements IEx
 		// This is done after the barrier is released to avoid blocking initialization
 		this._activateDeferredRemoteEvents();
 
+		// Coderm: Force-activate configured eager extensions (e.g. vscode-neovim)
+		// after the registry is populated. This is the authoritative path: the
+		// `*` activation-event injection may miss on platforms where the config
+		// value is not yet available during the constructor.
+		// Why: Config is guaranteed loaded by the time `_initialize()` completes, and
+		// `_registry.getSnapshot()` is guaranteed populated, so this is the only call site
+		// that can reliably compensate for the Windows cold-start race the constructor misses.
+		// Note: Placed after `_releaseBarrier()` and `_activateDeferredRemoteEvents()` so
+		// extension hosts are fully ready to receive the activation request.
+		this._activateEagerExtensions();
+
 		await this._handleExtensionTests();
+	}
+
+	/**
+	 * Coderm: Read and normalize the `coderm.extensions.eagerActivation`
+	 * setting. Returns an empty array for missing/non-array values so callers
+	 * can iterate without a separate guard.
+	 */
+	private _readEagerExtensionIds(): string[] {
+		const ids = this._configurationService.getValue<string[]>('coderm.extensions.eagerActivation');
+		return Array.isArray(ids) ? ids : [];
+	}
+
+	/**
+	 * Coderm: Push the current `coderm.extensions.eagerActivation` value into
+	 * the `ImplicitActivationEvents` registry so subsequent extension scans
+	 * inject `*` for listed extensions.
+	 */
+	private _refreshEagerExtensionConfig(): void {
+		ImplicitActivationEvents.setEagerExtensions(new Set(this._readEagerExtensionIds()));
+	}
+
+	/**
+	 * Coderm: Force-activate extensions listed in `coderm.extensions.eagerActivation`.
+	 *
+	 * Uses `activateById` so activation does not depend on extension-declared
+	 * activation events firing (e.g. `onCommand:type` for vscode-neovim, which
+	 * only fires on first key press). Missing or disabled extensions are
+	 * silently skipped. Safe to call before `_initialize()` completes: if the
+	 * registry snapshot is still empty, `find` returns `undefined` for every
+	 * ID and the method is a no-op.
+	 */
+	private _activateEagerExtensions(): void {
+		const ids = this._readEagerExtensionIds();
+		if (ids.length === 0) {
+			return;
+		}
+		const registry = this._registry.getSnapshot().extensions;
+		for (const id of ids) {
+			const desc = registry.find(e => ExtensionIdentifier.equals(e.identifier, id));
+			// Why: Silently skip rather than warn. Missing entries are expected when the user
+			// keeps a stale ID in `eagerActivation` after uninstall, or the extension is disabled
+			// (disabled extensions are filtered out of the registry snapshot). Either case is
+			// a normal user state, not an error condition.
+			if (!desc) {
+				continue;
+			}
+			this._logService.info(`[Coderm] Eagerly activating extension: ${id}`);
+			// Why: `activateById` is used instead of `activateByEvent('*')` because the target
+			// extension's own declared `activationEvents` may never fire. vscode-neovim 1.19.0
+			// declares `onCommand:type` which only fires on the user's first key press — that
+			// was the original symptom (PR #193, commit ebc39b6fcec). `activateById` bypasses
+			// activation-event matching entirely and resolves the extension by identifier.
+			// Constraint: `startup: true` is required so the extension host treats this as a
+			// startup activation (same lifecycle as `*`), not a deferred on-demand activation.
+			this.activateById(desc.identifier, {
+				startup: true,
+				extensionId: desc.identifier,
+				activationEvent: 'coderm.extensions.eagerActivation'
+			}).then(undefined, err => {
+				this._logService.error(`[Coderm] Failed to eagerly activate ${id}:`, err);
+			});
+		}
 	}
 
 	private async _activateDeferredRemoteEvents(): Promise<void> {
