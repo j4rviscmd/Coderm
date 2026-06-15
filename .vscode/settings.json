@@ -40,7 +40,7 @@
 	"files.trimTrailingWhitespace": true,
 	"files.insertFinalNewline": true,
 	"files.exclude": {
-		".git": true,
+		".git": false,
 		".build": true,
 		".profile-oss": true,
 		"**/*.tsbuildinfo": true,
