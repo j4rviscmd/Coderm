@@ -45,6 +45,12 @@ export class ImplicitActivationEventsImpl {
 	/**
 	 * Coderm: Register extension IDs whose activation events should include `*`,
 	 * forcing eager (startup) activation regardless of their package.json declaration.
+	 *
+	 * The cache is intentionally not cleared here because `IExtensionDescription`
+	 * objects are stable for a given extension lifecycle. Callers that need a
+	 * fresh read (e.g. after a setting change) should invalidate via a new
+	 * extension scan rather than expecting this method to re-evaluate cached
+	 * entries.
 	 */
 	public setEagerExtensions(ids: ReadonlySet<string>): void {
 		this._eagerExtensions = new Set(ids);
