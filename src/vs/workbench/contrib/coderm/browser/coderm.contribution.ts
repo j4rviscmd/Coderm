@@ -23,6 +23,7 @@ import './quickOpenIncludeTerminals.js';
 import './quickOpenLocalFiles.js';
 import './resizePaneActions.js';
 import './remoteSSHGuard.js';
+import './startupFocusGuard.js';
 import './terminalHorizontalPadding.js';
 import './terminalKillFocusRestore.js';
 import './updateDownloadProgress.js';
