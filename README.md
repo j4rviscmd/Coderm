@@ -70,6 +70,7 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.quickOpen.includeTerminals`              | `boolean`  | `true`                                           | Include terminal editors in Quick Open              |
 | `coderm.updateDownloadProgress.enabled`          | `boolean`  | `true`                                           | Show progress notification during update download   |
 | `coderm.terminal.closeEmptyPaneOnKill`           | `boolean`  | `true`                                           | Close empty pane and restore focus on terminal kill |
+| `coderm.titleBar.hideMoreActions`                | `boolean`  | `true`                                           | Hide the trailing "More Actions" overflow button (`...`) in the title bar |
 
 ---
 

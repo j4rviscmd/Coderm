@@ -17,6 +17,7 @@ import './devTitlePrefix.js';
 import './eagerExtensions.js';
 import './editorGroupIndex.js';
 import './gitWorktreeDefaults.js';
+import './hideTitleBarMoreActions.js';
 import './preventNewGroupOnFocus.js';
 import './quickOpenIncludeTerminals.js';
 import './resizePaneActions.js';
