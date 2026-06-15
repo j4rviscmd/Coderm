@@ -69,6 +69,7 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.workbench.editor.resizeIncrement`        | `number`   | `60`                                             | Pane resize increment (px)                          |
 | `coderm.terminal.horizontalPadding`              | `number`   | `20`                                             | Terminal horizontal padding (px, 0–100)             |
 | `coderm.quickOpen.includeTerminals`              | `boolean`  | `true`                                           | Include terminal editors in Quick Open              |
+| `coderm.quickOpen.localFiles`                    | `boolean`  | `true`                                           | Include local files with absolute paths in Quick Open when connected via SSH |
 | `coderm.updateDownloadProgress.enabled`          | `boolean`  | `true`                                           | Show progress notification during update download   |
 | `coderm.terminal.closeEmptyPaneOnKill`           | `boolean`  | `true`                                           | Close empty pane and restore focus on terminal kill |
 | `coderm.titleBar.hideMoreActions`                | `boolean`  | `true`                                           | Hide the trailing "More Actions" overflow button (`...`) in the title bar |

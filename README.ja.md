@@ -69,6 +69,7 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.workbench.editor.resizeIncrement`        | `number`   | `60`                                             | ペインリサイズの増分（px）                         |
 | `coderm.terminal.horizontalPadding`              | `number`   | `20`                                             | ターミナルの水平パディング（px, 0–100）            |
 | `coderm.quickOpen.includeTerminals`              | `boolean`  | `true`                                           | Quick Openにターミナルエディタを含める             |
+| `coderm.quickOpen.localFiles`                    | `boolean`  | `true`                                           | SSH接続時にQuick Openで絶対パスのローカルファイルを候補に含める |
 | `coderm.updateDownloadProgress.enabled`          | `boolean`  | `true`                                           | アップデートダウンロード時に進捗通知を表示         |
 | `coderm.terminal.closeEmptyPaneOnKill`           | `boolean`  | `true`                                           | ターミナルkill時に空ペインを閉じてフォーカス復帰   |
 | `coderm.titleBar.hideMoreActions`                | `boolean`  | `true`                                           | タイトルバー右端の「More Actions (`...`)」オーバーフローボタンを非表示 |
