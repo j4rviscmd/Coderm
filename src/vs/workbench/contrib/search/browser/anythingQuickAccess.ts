@@ -13,6 +13,8 @@ import { getOutOfWorkspaceEditorResources, extractRangeFromFilter, IWorkbenchSea
 import { ISearchService, ISearchComplete } from '../../../services/search/common/search.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { untildify } from '../../../../base/common/labels.js';
+import { posix, win32 } from '../../../../base/common/path.js';
+import { OS, OperatingSystem } from '../../../../base/common/platform.js';
 import { IPathService } from '../../../services/path/common/pathService.js';
 import { URI } from '../../../../base/common/uri.js';
 import { toLocalResource, dirname, basenameOrAuthority } from '../../../../base/common/resources.js';
@@ -59,6 +61,7 @@ import { IChatWidgetService, IQuickChatService } from '../../chat/browser/chat.j
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { ICustomEditorLabelService } from '../../../services/editor/common/customEditorLabelService.js';
 import { CodermQuickOpenIncludeTerminalsSetting } from '../../coderm/browser/quickOpenIncludeTerminals.js';
+import { CodermQuickOpenLocalFilesSetting } from '../../coderm/browser/quickOpenLocalFiles.js';
 
 interface IAnythingQuickPickItem extends IPickerQuickAccessItem, IQuickPickItemWithResource { }
 
@@ -219,6 +222,9 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 			historyFilterSortOrder: searchConfig?.quickOpen?.history?.filterSortOrder,
 			preserveInput: quickAccessConfig?.preserveInput,
 			includeTerminals: this.configurationService.getValue<boolean>(CodermQuickOpenIncludeTerminalsSetting),
+			// --- Coderm start: open local files via Quick Open in remote sessions ---
+			includeLocalFiles: this.configurationService.getValue<boolean>(CodermQuickOpenLocalFilesSetting),
+			// --- Coderm end ---
 		};
 	}
 
@@ -574,30 +580,46 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 			return [];
 		}
 
-		// Absolute path result
-		const absolutePathResult = await this.getAbsolutePathFileResult(query, token);
+		// --- Coderm start: open local files via Quick Open in remote sessions ---
+		// Resolve absolute path results for both the remote (vscode-remote://)
+		// and the local (file://) filesystem so both candidates can be shown.
+		const [absolutePathResult, localAbsolutePathResults] = await Promise.all([
+			this.getAbsolutePathFileResult(query, token),
+			this.getLocalAbsolutePathFileResults(query, token)
+		]);
+		// --- Coderm end ---
 		if (token.isCancellationRequested) {
 			return [];
 		}
 
-		// Use absolute path result as only results if present
+		// Use absolute path results as only results if present
 		let fileMatches: Array<URI>;
+		const absolutePathMatches: URI[] = [];
 		if (absolutePathResult) {
-			if (excludes.has(absolutePathResult)) {
-				return []; // excluded
+			absolutePathMatches.push(absolutePathResult);
+		}
+		// --- Coderm start: merge local absolute path results (dedup) ---
+		for (const localResult of localAbsolutePathResults) {
+			if (!absolutePathMatches.some(existing => this.uriIdentityService.extUri.isEqual(existing, localResult))) {
+				absolutePathMatches.push(localResult);
 			}
+		}
+		// --- Coderm end ---
+		if (absolutePathMatches.length > 0) {
+			return absolutePathMatches
+				.filter(resource => !excludes.has(resource))
+				.map(resource => {
+					// Apply full highlights to ensure the pick is displayed.
+					// Since a ~ might have been used for searching, our fuzzy
+					// scorer may otherwise not properly respect the pick.
+					const absolutePathPick = this.createAnythingPick(resource, this.configuration);
+					absolutePathPick.highlights = {
+						label: [{ start: 0, end: absolutePathPick.label.length }],
+						description: absolutePathPick.description ? [{ start: 0, end: absolutePathPick.description.length }] : undefined
+					};
 
-			// Create a single result pick and make sure to apply full
-			// highlights to ensure the pick is displayed. Since a
-			// ~ might have been used for searching, our fuzzy scorer
-			// may otherwise not properly respect the pick as a result
-			const absolutePathPick = this.createAnythingPick(absolutePathResult, this.configuration);
-			absolutePathPick.highlights = {
-				label: [{ start: 0, end: absolutePathPick.label.length }],
-				description: absolutePathPick.description ? [{ start: 0, end: absolutePathPick.description.length }] : undefined
-			};
-
-			return [absolutePathPick];
+					return absolutePathPick;
+				});
 		}
 
 		// Otherwise run the file search (with a delayer if cache is not ready yet)
@@ -772,6 +794,50 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 
 		return;
 	}
+
+	// --- Coderm start: open local files via Quick Open in remote sessions ---
+	private async getLocalAbsolutePathFileResults(query: IPreparedQuery, token: CancellationToken): Promise<URI[]> {
+		// Only active in remote sessions: in local sessions the workspace is
+		// already on the local filesystem, so resolving absolute paths as local
+		// would just duplicate the existing results.
+		if (!this.configuration.includeLocalFiles || !this.environmentService.remoteAuthority) {
+			return [];
+		}
+
+		if (!query.containsPathSeparator) {
+			return [];
+		}
+
+		const localUserHome = this.pathService.userHome({ preferLocal: true });
+		const detildifiedQuery = untildify(query.original, localUserHome.fsPath);
+		if (token.isCancellationRequested) {
+			return [];
+		}
+
+		// Use the local OS path library (not the remote one) to decide whether
+		// the query is an absolute path on the client machine.
+		const localPathLib = OS === OperatingSystem.Windows ? win32 : posix;
+		if (!localPathLib.isAbsolute(detildifiedQuery)) {
+			return [];
+		}
+
+		const resource = URI.file(detildifiedQuery);
+		if (token.isCancellationRequested) {
+			return [];
+		}
+
+		try {
+			const stat = await this.fileService.stat(resource);
+			if (stat.isFile) {
+				return [await this.matchFilenameCasing(resource)];
+			}
+		} catch (error) {
+			// ignore if file does not exist
+		}
+
+		return [];
+	}
+	// --- Coderm end ---
 
 	private async getRelativePathFileResults(query: IPreparedQuery, token: CancellationToken): Promise<URI[] | undefined> {
 		if (!query.containsPathSeparator) {

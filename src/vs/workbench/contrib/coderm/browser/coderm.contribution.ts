@@ -20,6 +20,7 @@ import './gitWorktreeDefaults.js';
 import './hideTitleBarMoreActions.js';
 import './preventNewGroupOnFocus.js';
 import './quickOpenIncludeTerminals.js';
+import './quickOpenLocalFiles.js';
 import './resizePaneActions.js';
 import './remoteSSHGuard.js';
 import './terminalHorizontalPadding.js';
