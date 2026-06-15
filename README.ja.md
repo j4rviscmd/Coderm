@@ -65,6 +65,7 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.workbench.editor.autoMaximizeOnFocus`    | `boolean`  | `true`                                           | 最小ペインにフォーカス時の自動最大化を制御         |
 | `coderm.workbench.editor.preventNewGroupOnFocus` | `boolean`  | `false`                                          | フォーカス時に新しいエディタグループの作成を抑制   |
 | `coderm.extensions.eagerActivation`              | `string[]` | `["asvetliakov.vscode-neovim", "vscodevim.vim"]` | 起動時に即座にアクティベートする拡張機能IDのリスト |
+| `coderm.startup.focusGuard.enabled`              | `boolean`  | `true`                                           | eager activation 後フォーカスが迷子になったらエディタを1回復元 |
 | `coderm.workbench.editor.resizeIncrement`        | `number`   | `60`                                             | ペインリサイズの増分（px）                         |
 | `coderm.terminal.horizontalPadding`              | `number`   | `20`                                             | ターミナルの水平パディング（px, 0–100）            |
 | `coderm.quickOpen.includeTerminals`              | `boolean`  | `true`                                           | Quick Openにターミナルエディタを含める             |

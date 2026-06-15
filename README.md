@@ -65,6 +65,7 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.workbench.editor.autoMaximizeOnFocus`    | `boolean`  | `true`                                           | Control auto-maximize when focusing smallest pane   |
 | `coderm.workbench.editor.preventNewGroupOnFocus` | `boolean`  | `false`                                          | Prevent creating new editor group on focus          |
 | `coderm.extensions.eagerActivation`              | `string[]` | `["asvetliakov.vscode-neovim", "vscodevim.vim"]` | Extensions to activate eagerly on startup           |
+| `coderm.startup.focusGuard.enabled`              | `boolean`  | `true`                                           | Restore editor focus once if eager activation strands it |
 | `coderm.workbench.editor.resizeIncrement`        | `number`   | `60`                                             | Pane resize increment (px)                          |
 | `coderm.terminal.horizontalPadding`              | `number`   | `20`                                             | Terminal horizontal padding (px, 0–100)             |
 | `coderm.quickOpen.includeTerminals`              | `boolean`  | `true`                                           | Include terminal editors in Quick Open              |
