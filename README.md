@@ -73,6 +73,10 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.updateDownloadProgress.enabled`          | `boolean`  | `true`                                           | Show progress notification during update download   |
 | `coderm.terminal.closeEmptyPaneOnKill`           | `boolean`  | `true`                                           | Close empty pane and restore focus on terminal kill |
 | `coderm.titleBar.hideMoreActions`                | `boolean`  | `true`                                           | Hide the trailing "More Actions" overflow button (`...`) in the title bar |
+| `coderm.inactiveOverlay.mode`                    | `string`   | `"on"`                                           | Inactive-window overlay mode (`on` / `off` / `blur-off`)                |
+| `coderm.inactiveOverlay.delay`                   | `number`   | `300`                                            | Delay before showing overlay when inactive (ms, 0–5000)                 |
+| `coderm.inactiveOverlay.label`                   | `boolean`  | `true`                                           | Show the centered "Not Active" card on the overlay                       |
+| `coderm.inactiveOverlay.dimming`                 | `number`   | `0.45`                                           | Backdrop darkness of the overlay (0–1; applies to both `on`/`blur-off`)  |
 
 ---
 

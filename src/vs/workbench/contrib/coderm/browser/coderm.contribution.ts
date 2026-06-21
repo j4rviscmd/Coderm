@@ -18,6 +18,7 @@ import './eagerExtensions.js';
 import './editorGroupIndex.js';
 import './gitWorktreeDefaults.js';
 import './hideTitleBarMoreActions.js';
+import './inactiveOverlay.js';
 import './preventNewGroupOnFocus.js';
 import './quickOpenIncludeTerminals.js';
 import './quickOpenLocalFiles.js';
