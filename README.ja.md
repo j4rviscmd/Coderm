@@ -73,6 +73,10 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.updateDownloadProgress.enabled`          | `boolean`  | `true`                                           | アップデートダウンロード時に進捗通知を表示         |
 | `coderm.terminal.closeEmptyPaneOnKill`           | `boolean`  | `true`                                           | ターミナルkill時に空ペインを閉じてフォーカス復帰   |
 | `coderm.titleBar.hideMoreActions`                | `boolean`  | `true`                                           | タイトルバー右端の「More Actions (`...`)」オーバーフローボタンを非表示 |
+| `coderm.inactiveOverlay.mode`                    | `string`   | `"on"`                                           | 非アクティブ時のオーバーレイ表示モード（`on` / `off` / `blur-off`） |
+| `coderm.inactiveOverlay.delay`                   | `number`   | `300`                                            | 非アクティブ検知からオーバーレイ表示までの遅延（ms, 0–5000） |
+| `coderm.inactiveOverlay.label`                   | `boolean`  | `true`                                           | 中央の「Not Active」カードを表示するか |
+| `coderm.inactiveOverlay.dimming`                 | `number`   | `0.45`                                           | オーバーレイの暗さ（0–1、`on`/`blur-off` 共通） |
 
 ---
 
