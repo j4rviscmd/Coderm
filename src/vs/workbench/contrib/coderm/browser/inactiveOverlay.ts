@@ -139,11 +139,11 @@ export class InactiveOverlayController extends Disposable implements IWorkbenchC
 					left: 0;
 					right: 0;
 					bottom: 0;
-					// Why: 10000 deliberately sits above every standard VS Code layer
-					// (modal editor backdrop=2540, notifications=2545, quick input=2550,
-					// dialogs=2575) so the overlay covers all of them when the window is
-					// inactive — including a dialog or quick pick that happens to be open
-					// at the moment focus is lost.
+					/* Why: 10000 deliberately sits above every standard VS Code layer
+					 * (modal editor backdrop=2540, notifications=2545, quick input=2550,
+					 * dialogs=2575) so the overlay covers all of them when the window is
+					 * inactive — including a dialog or quick pick that happens to be open
+					 * at the moment focus is lost. */
 					z-index: 10000;
 					display: none;
 					align-items: center;
