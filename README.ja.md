@@ -77,6 +77,7 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.inactiveOverlay.delay`                   | `number`   | `300`                                            | 非アクティブ検知からオーバーレイ表示までの遅延（ms, 0–5000） |
 | `coderm.inactiveOverlay.label`                   | `boolean`  | `true`                                           | 中央の「Not Active」カードを表示するか |
 | `coderm.inactiveOverlay.dimming`                 | `number`   | `0.45`                                           | オーバーレイの暗さ（0–1、`on`/`blur-off` 共通） |
+| `coderm.modal.captureContent`                    | `boolean`  | `true`                                           | モーダルエディタが開いている時、Quick Open等のエディタをモーダル内に開く（offで本家挙動） |
 
 ---
 
@@ -88,6 +89,11 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.workbench.editor.resizePaneDown`  | ペインを下方向にリサイズ |
 | `coderm.workbench.editor.resizePaneLeft`  | ペインを左方向にリサイズ |
 | `coderm.workbench.editor.resizePaneRight` | ペインを右方向にリサイズ |
+| `coderm.workbench.modalEditor.open`       | 空のモーダルエディタを開く |
+| `coderm.workbench.modalEditor.close`      | モーダルエディタを閉じる |
+
+> [!TIP]
+> **モーダルエディタ:** モーダルが開いてフォーカスされている間、Quick Open のファイルやエディタ配置のターミナルはモーダル内に直接開きます。モーダル内でターミナル（`lazygit` 等）を動かすには `terminal.integrated.defaultLocation: "editor"` を設定してください（パネルターミナルはモーダルに流入しません）。`coderm.modal.captureContent: false` で、モーダルを閉じてメインへ流す本家挙動に戻せます。
 
 > [!TIP]
 > **[psmux](https://github.com/psmux/psmux)利用者向け:** `terminal.integrated.enableWin32InputMode: true` を設定すると、psmuxなどのターミナルマルチプレクサで修飾キー付きキーイベント（Ctrl+J等）を正しく区別できるようになります。

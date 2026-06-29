@@ -77,6 +77,7 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.inactiveOverlay.delay`                   | `number`   | `300`                                            | Delay before showing overlay when inactive (ms, 0–5000)                 |
 | `coderm.inactiveOverlay.label`                   | `boolean`  | `true`                                           | Show the centered "Not Active" card on the overlay                       |
 | `coderm.inactiveOverlay.dimming`                 | `number`   | `0.45`                                           | Backdrop darkness of the overlay (0–1; applies to both `on`/`blur-off`)  |
+| `coderm.modal.captureContent`                    | `boolean`  | `true`                                           | When a modal editor is open, route Quick Open / terminal editors into it instead of closing the modal (off = upstream behavior) |
 
 ---
 
@@ -88,6 +89,11 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.workbench.editor.resizePaneDown`  | Resize pane downward  |
 | `coderm.workbench.editor.resizePaneLeft`  | Resize pane leftward  |
 | `coderm.workbench.editor.resizePaneRight` | Resize pane rightward |
+| `coderm.workbench.modalEditor.open`       | Open modal editor      |
+| `coderm.workbench.modalEditor.close`      | Close modal editor     |
+
+> [!TIP]
+> **Modal Editor:** While a modal is open and focused, files from Quick Open and editor-targeted terminals open directly inside it. To run a terminal (e.g. `lazygit`) inside the modal, set `terminal.integrated.defaultLocation: "editor"` — panel terminals do not flow into the modal. Set `coderm.modal.captureContent: false` to restore the upstream behavior (closing the modal and redirecting editors to the main area).
 
 > [!TIP]
 > **[psmux](https://github.com/psmux/psmux) users:** Set `terminal.integrated.enableWin32InputMode: true` so that psmux and similar terminal multiplexers can correctly distinguish modified key events (e.g., Ctrl+J) in the integrated terminal.
