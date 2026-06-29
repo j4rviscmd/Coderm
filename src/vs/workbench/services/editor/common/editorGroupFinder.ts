@@ -42,7 +42,16 @@ function handleGroupResult(group: IEditorGroup, editor: EditorInputWithOptions |
 	const modalEditorMode = configurationService.getValue<string>('workbench.editor.useModal');
 	const editorInput = isEditorInputWithOptions(editor) ? editor.editor : isEditorInput(editor) ? editor : undefined;
 	const requiresModal = editorInput instanceof EditorInput && editorInput.hasCapability(EditorInputCapabilities.RequiresModal);
-	if (modalEditorPart && preferredGroup !== MODAL_GROUP && modalEditorMode !== 'all' && !requiresModal) {
+	// Why: Coderm lets users summon an EMPTY modal editor pane
+	// (coderm.workbench.modalEditor.open) and open editors into it via Quick
+	// Open, the terminal, etc. By default (useModal !== 'all') upstream closes
+	// the modal and redirects the editor to the main part (see
+	// handleModalEditorPart below). When coderm.modal.captureContent is enabled
+	// we skip that redirect so the incoming editor flows into the modal's active
+	// group. RequiresModal editors (e.g. Settings UI) stay protected by the
+	// requiresModal check above, so they are never affected.
+	const codermCaptureContent = configurationService.getValue<boolean>('coderm.modal.captureContent') !== false;
+	if (modalEditorPart && preferredGroup !== MODAL_GROUP && modalEditorMode !== 'all' && !requiresModal && !codermCaptureContent) {
 		// Only allow to open in modal group if MODAL_GROUP is explicitly requested
 		// or when the setting is configured to open all editors modal or when the
 		// editor has the RequiresModal capability.
