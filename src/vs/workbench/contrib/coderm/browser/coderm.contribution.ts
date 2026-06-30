@@ -16,6 +16,7 @@ import './defaultThemeInstaller.js';
 import './devTitlePrefix.js';
 import './eagerExtensions.js';
 import './editorGroupIndex.js';
+import './editorGroupPolicy.js';
 import './gitWorktreeDefaults.js';
 import './hideTitleBarMoreActions.js';
 import './inactiveOverlay.js';

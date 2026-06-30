@@ -10,6 +10,9 @@ import { EditorInputWithOptions, isEditorInputWithOptions, IUntypedEditorInput, 
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { IEditorGroup, GroupsOrder, preferredSideBySideGroupDirection, IEditorGroupsService, IModalEditorPart } from './editorGroupsService.js';
 import { AUX_WINDOW_GROUP, AUX_WINDOW_GROUP_TYPE, MODAL_GROUP, MODAL_GROUP_TYPE, PreferredGroup, SIDE_GROUP } from './editorService.js';
+// --- Coderm start: Issue #219 ---
+import { Schemas } from '../../../../base/common/network.js';
+// --- Coderm end ---
 
 type FindGroupResult = Promise<[IEditorGroup, EditorActivation | undefined]> | [IEditorGroup, EditorActivation | undefined];
 
@@ -235,6 +238,30 @@ function doFindGroup(input: EditorInputWithOptions | IUntypedEditorInput, prefer
 		}
 	}
 
+	// --- Coderm start: terminal/text editor separation (Issue #219) ---
+	// Why: tmux-like pane model — terminal and text editors never share a group
+	// via implicit open paths, and each group holds at most one terminal editor.
+	// Quick Open, the terminal editor service, and every openEditor(ACTIVE_GROUP)
+	// caller funnel through this fallback, so a single hook covers both
+	// directions. Explicit paths (SIDE_GROUP, AUX_WINDOW_GROUP, MODAL_GROUP,
+	// numeric GroupIdentifier, IEditorGroup) resolve `group` earlier above and
+	// never reach here, satisfying the "explicit user action is exempt" rule.
+	const codermSeparate = configurationService.getValue<boolean>('coderm.workbench.editor.separateTerminalEditors') !== false;
+	const codermSingleTerminal = configurationService.getValue<boolean>('coderm.workbench.editor.singleTerminalEditorPerGroup') !== false;
+	if (!(group instanceof Promise) && (codermSeparate || codermSingleTerminal)) {
+		const codermOptions = { separate: codermSeparate, singleTerminal: codermSingleTerminal };
+		if (codermShouldAvoidGroup(group, editor, codermOptions)) {
+			const alternative = codermFindAcceptableGroup(
+				editorGroupService.getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE),
+				editor,
+				group,
+				codermOptions
+			);
+			group = alternative ?? editorGroupService.addGroup(group, preferredSideBySideGroupDirection(configurationService));
+		}
+	}
+	// --- Coderm end ---
+
 	return group;
 }
 
@@ -272,3 +299,64 @@ function isOpened(group: IEditorGroup, editor: EditorInput | IUntypedEditorInput
 
 	return false;
 }
+
+// --- Coderm start: Issue #219 helpers ---
+// Why: these implement the terminal/text editor separation policies
+// (coderm.workbench.editor.separateTerminalEditors and
+// coderm.workbench.editor.singleTerminalEditorPerGroup). They live inline in
+// this common-layer file rather than in contrib/coderm because VSCode's
+// layering rules forbid services/common from importing contrib/*.
+
+function codermIsTerminalEditor(editor: EditorInput | IUntypedEditorInput): boolean {
+	const resource = (editor as { resource?: { scheme?: string } }).resource;
+
+	return resource?.scheme === Schemas.vscodeTerminal;
+}
+
+interface ICodermEditorGroupPolicyOptions {
+	readonly separate: boolean;
+	readonly singleTerminal: boolean;
+}
+
+function codermShouldAvoidGroup(group: IEditorGroup, editor: EditorInput | IUntypedEditorInput, options: ICodermEditorGroupPolicyOptions): boolean {
+	if (group.editors.length === 0) {
+		return false;
+	}
+
+	const editorIsTerminal = codermIsTerminalEditor(editor);
+	const groupHasTerminal = group.editors.some(e => codermIsTerminalEditor(e));
+	const groupHasText = group.editors.some(e => !codermIsTerminalEditor(e));
+
+	if (editorIsTerminal) {
+		// Opening a terminal: avoid text groups (separation) and existing
+		// terminal groups (single-per-group).
+		if (options.separate && groupHasText) {
+			return true;
+		}
+		if (options.singleTerminal && groupHasTerminal) {
+			return true;
+		}
+	} else {
+		// Opening a text editor: avoid terminal groups (separation) only.
+		if (options.separate && groupHasTerminal) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function codermFindAcceptableGroup(groups: readonly IEditorGroup[], editor: EditorInput | IUntypedEditorInput, excludeGroup: IEditorGroup, options: ICodermEditorGroupPolicyOptions): IEditorGroup | undefined {
+	for (const group of groups) {
+		if (group === excludeGroup) {
+			continue;
+		}
+
+		if (!codermShouldAvoidGroup(group, editor, options)) {
+			return group;
+		}
+	}
+
+	return undefined;
+}
+// --- Coderm end ---

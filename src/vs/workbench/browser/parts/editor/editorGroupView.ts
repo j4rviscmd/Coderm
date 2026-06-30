@@ -2088,6 +2088,17 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 	}
 
 	lock(locked: boolean): void {
+		// --- Coderm start: disable editor group lock (Issue #219) ---
+		// Why: tmux-like pane model — group locking is counterintuitive for
+		// terminal-oriented users. Forcing unlocked here covers ALL lock entry
+		// points (auto-lock at the openEditor site, manual Toggle/Lock commands
+		// via editorCommands.ts, Embedded Browser) because they funnel through
+		// this method. Residual locks restored from persisted layout state are
+		// cleared separately by CodermEditorGroupLockDisabler.
+		if (locked && this.configurationService.getValue<boolean>('coderm.workbench.editor.disableGroupLock') !== false) {
+			locked = false;
+		}
+		// --- Coderm end ---
 		this.model.lock(locked);
 	}
 
