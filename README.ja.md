@@ -78,6 +78,9 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.inactiveOverlay.label`                   | `boolean`  | `true`                                           | 中央の「Not Active」カードを表示するか |
 | `coderm.inactiveOverlay.dimming`                 | `number`   | `0.45`                                           | オーバーレイの暗さ（0–1、`on`/`blur-off` 共通） |
 | `coderm.modal.captureContent`                    | `boolean`  | `true`                                           | モーダルエディタが開いている時、Quick Open等のエディタをモーダル内に開く（offで本家挙動） |
+| `coderm.workbench.editor.separateTerminalEditors` | `boolean`  | `true`                                           | ターミナルエディタとテキストエディタを同じグループに混在させない。Quick Open等のデフォルトの開く操作で、既存の同種グループ（なければ新規）に振り分ける |
+| `coderm.workbench.editor.singleTerminalEditorPerGroup` | `boolean`  | `true`                                           | 1つのエディタグループにターミナルエディタは1つだけ。新規ターミナルは空きグループ（なければ新規）に開き、既存ターミナルグループにタブを追加しない |
+| `coderm.workbench.editor.disableGroupLock`        | `boolean`  | `true`                                           | エディタグループのロック機能を完全に無効化。グループは自動・手動を問わずロックできず、常にロック解除状態で動作 |
 
 ---
 

@@ -78,6 +78,9 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.inactiveOverlay.label`                   | `boolean`  | `true`                                           | Show the centered "Not Active" card on the overlay                       |
 | `coderm.inactiveOverlay.dimming`                 | `number`   | `0.45`                                           | Backdrop darkness of the overlay (0–1; applies to both `on`/`blur-off`)  |
 | `coderm.modal.captureContent`                    | `boolean`  | `true`                                           | When a modal editor is open, route Quick Open / terminal editors into it instead of closing the modal (off = upstream behavior) |
+| `coderm.workbench.editor.separateTerminalEditors` | `boolean`  | `true`                                           | Never mix terminal and text editors in one group; Quick Open and other default open paths route to an existing same-type group (or a new one) instead of mixing |
+| `coderm.workbench.editor.singleTerminalEditorPerGroup` | `boolean`  | `true`                                           | Limit each editor group to a single terminal editor; opening a new terminal routes to an empty group (or creates one) instead of adding a tab to an existing terminal group |
+| `coderm.workbench.editor.disableGroupLock`        | `boolean`  | `true`                                           | Completely disable the editor group lock feature — groups can never be locked (automatically or manually) and always behave as unlocked |
 
 ---
 
