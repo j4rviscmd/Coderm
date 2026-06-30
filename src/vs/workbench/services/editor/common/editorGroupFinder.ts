@@ -249,15 +249,23 @@ function doFindGroup(input: EditorInputWithOptions | IUntypedEditorInput, prefer
 	const codermSeparate = configurationService.getValue<boolean>('coderm.workbench.editor.separateTerminalEditors') !== false;
 	const codermSingleTerminal = configurationService.getValue<boolean>('coderm.workbench.editor.singleTerminalEditorPerGroup') !== false;
 	if (!(group instanceof Promise) && (codermSeparate || codermSingleTerminal)) {
-		const codermOptions = { separate: codermSeparate, singleTerminal: codermSingleTerminal };
-		if (codermShouldAvoidGroup(group, editor, codermOptions)) {
-			const alternative = codermFindAcceptableGroup(
-				editorGroupService.getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE),
-				editor,
-				group,
-				codermOptions
-			);
-			group = alternative ?? editorGroupService.addGroup(group, preferredSideBySideGroupDirection(configurationService));
+		// Skip modal editor part groups to avoid render corruption (e.g. lazygit
+		// opened in modal only renders right half). Modal groups are exempt from
+		// separation policies since they're explicitly summoned by the user.
+		const modalEditorPart = editorGroupService.activeModalEditorPart;
+		const isModalGroup = modalEditorPart && modalEditorPart.groups.some(modalGroup => modalGroup.id === (group as IEditorGroup).id);
+
+		if (!isModalGroup) {
+			const codermOptions = { separate: codermSeparate, singleTerminal: codermSingleTerminal };
+			if (codermShouldAvoidGroup(group, editor, codermOptions)) {
+				const alternative = codermFindAcceptableGroup(
+					editorGroupService.getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE),
+					editor,
+					group,
+					codermOptions
+				);
+				group = alternative ?? editorGroupService.addGroup(group, preferredSideBySideGroupDirection(configurationService));
+			}
 		}
 	}
 	// --- Coderm end ---
