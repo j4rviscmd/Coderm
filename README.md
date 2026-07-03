@@ -94,6 +94,7 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.workbench.editor.resizePaneRight` | Resize pane rightward |
 | `coderm.workbench.modalEditor.open`       | Open modal editor      |
 | `coderm.workbench.modalEditor.close`      | Close modal editor     |
+| `coderm.workbench.openReadme`             | Open the workspace root's README.md, or create a new untitled file if absent |
 
 > [!TIP]
 > **Modal Editor:** While a modal is open and focused, files from Quick Open and editor-targeted terminals open directly inside it. To run a terminal (e.g. `lazygit`) inside the modal, set `terminal.integrated.defaultLocation: "editor"` — panel terminals do not flow into the modal. Set `coderm.modal.captureContent: false` to restore the upstream behavior (closing the modal and redirecting editors to the main area).
