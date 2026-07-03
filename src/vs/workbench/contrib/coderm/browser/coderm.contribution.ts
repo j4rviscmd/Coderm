@@ -21,6 +21,7 @@ import './gitWorktreeDefaults.js';
 import './hideTitleBarMoreActions.js';
 import './inactiveOverlay.js';
 import './modalEditorActions.js';
+import './openReadme.js';
 import './preventNewGroupOnFocus.js';
 import './quickOpenIncludeTerminals.js';
 import './quickOpenLocalFiles.js';

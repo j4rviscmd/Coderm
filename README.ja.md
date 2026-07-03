@@ -94,6 +94,7 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.workbench.editor.resizePaneRight` | ペインを右方向にリサイズ |
 | `coderm.workbench.modalEditor.open`       | 空のモーダルエディタを開く |
 | `coderm.workbench.modalEditor.close`      | モーダルエディタを閉じる |
+| `coderm.workbench.openReadme`             | workspaceルートのREADME.mdを開く（なければ新規ファイル） |
 
 > [!TIP]
 > **モーダルエディタ:** モーダルが開いてフォーカスされている間、Quick Open のファイルやエディタ配置のターミナルはモーダル内に直接開きます。モーダル内でターミナル（`lazygit` 等）を動かすには `terminal.integrated.defaultLocation: "editor"` を設定してください（パネルターミナルはモーダルに流入しません）。`coderm.modal.captureContent: false` で、モーダルを閉じてメインへ流す本家挙動に戻せます。
