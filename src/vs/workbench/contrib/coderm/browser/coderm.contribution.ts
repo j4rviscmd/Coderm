@@ -30,4 +30,5 @@ import './remoteSSHGuard.js';
 import './startupFocusGuard.js';
 import './terminalHorizontalPadding.js';
 import './terminalKillFocusRestore.js';
+import './terminalPersistSessionOnReload.js';
 import './updateDownloadProgress.js';

@@ -11,7 +11,7 @@ import { EditorInputCapabilities, IEditorIdentifier, IUntypedEditorInput } from 
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { EditorInput, IEditorCloseHandler } from '../../../common/editor/editorInput.js';
-import { ITerminalInstance, ITerminalInstanceService, terminalEditorId } from './terminal.js';
+import { ITerminalInstance, ITerminalInstanceService, terminalEditorId, ITerminalConfigurationService } from './terminal.js';
 import { getColorClass, getUriClasses } from './terminalIcon.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IShellLaunchConfig, TerminalExitReason, TerminalLocation, TerminalSettingId } from '../../../../platform/terminal/common/terminal.js';
@@ -131,7 +131,8 @@ export class TerminalEditorInput extends EditorInput implements IEditorCloseHand
 		@IConfigurationService private readonly _configurationService: IConfigurationService,
 		@ILifecycleService private readonly _lifecycleService: ILifecycleService,
 		@IContextKeyService private _contextKeyService: IContextKeyService,
-		@IDialogService private readonly _dialogService: IDialogService
+		@IDialogService private readonly _dialogService: IDialogService,
+		@ITerminalConfigurationService private readonly _terminalConfigurationService: ITerminalConfigurationService
 	) {
 		super();
 
@@ -182,7 +183,13 @@ export class TerminalEditorInput extends EditorInput implements IEditorCloseHand
 			dispose(disposeListeners);
 
 			// Don't touch processes if the shutdown was a result of reload as they will be reattached
-			const shouldPersistTerminals = this._configurationService.getValue<boolean>(TerminalSettingId.EnablePersistentSessions) && e.reason === ShutdownReason.RELOAD;
+			// Use ITerminalConfigurationService.config to respect Coderm's reload-context wrapping
+			// Constraint: Must keep reading via ITerminalConfigurationService.config, not IConfigurationService.getValue().
+			// All other persistence checks under terminal/ (terminalService.ts, terminalProcessManager.ts) route through
+			// the same service, and the Coderm wrapper (coderm/browser/terminalPersistSessionOnReload.ts) only intercepts
+			// the config getter. A direct getValue() here would bypass it and make editor-hosted terminals discard
+			// processes on reload even when coderm.terminal.persistSessionOnReload is enabled.
+			const shouldPersistTerminals = this._terminalConfigurationService.config.enablePersistentSessions && e.reason === ShutdownReason.RELOAD;
 			if (shouldPersistTerminals) {
 				instance.detachProcessAndDispose(TerminalExitReason.Shutdown);
 			} else {
