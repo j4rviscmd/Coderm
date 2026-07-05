@@ -72,6 +72,7 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.quickOpen.localFiles`                    | `boolean`  | `true`                                           | SSH接続時にQuick Openで絶対パスのローカルファイルを候補に含める |
 | `coderm.updateDownloadProgress.enabled`          | `boolean`  | `true`                                           | アップデートダウンロード時に進捗通知を表示         |
 | `coderm.terminal.closeEmptyPaneOnKill`           | `boolean`  | `true`                                           | ターミナルkill時に空ペインを閉じてフォーカス復帰   |
+| `coderm.terminal.persistSessionOnReload`         | `boolean`  | `true`                                           | reload時にターミナルセッションを完全復元（プロセス・cwd・scrollback・ペイン構成）。`enablePersistentSessions: false`時も有効、close/quitは破棄 |
 | `coderm.titleBar.hideMoreActions`                | `boolean`  | `true`                                           | タイトルバー右端の「More Actions (`...`)」オーバーフローボタンを非表示 |
 | `coderm.inactiveOverlay.mode`                    | `string`   | `"on"`                                           | 非アクティブ時のオーバーレイ表示モード（`on` / `off` / `blur-off`） |
 | `coderm.inactiveOverlay.delay`                   | `number`   | `300`                                            | 非アクティブ検知からオーバーレイ表示までの遅延（ms, 0–5000） |

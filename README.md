@@ -72,6 +72,7 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.quickOpen.localFiles`                    | `boolean`  | `true`                                           | Include local files with absolute paths in Quick Open when connected via SSH |
 | `coderm.updateDownloadProgress.enabled`          | `boolean`  | `true`                                           | Show progress notification during update download   |
 | `coderm.terminal.closeEmptyPaneOnKill`           | `boolean`  | `true`                                           | Close empty pane and restore focus on terminal kill |
+| `coderm.terminal.persistSessionOnReload`         | `boolean`  | `true`                                           | Fully restore terminal sessions (process, cwd, scrollback, pane layout) on reload even when `enablePersistentSessions` is off; close/quit still discards |
 | `coderm.titleBar.hideMoreActions`                | `boolean`  | `true`                                           | Hide the trailing "More Actions" overflow button (`...`) in the title bar |
 | `coderm.inactiveOverlay.mode`                    | `string`   | `"on"`                                           | Inactive-window overlay mode (`on` / `off` / `blur-off`)                |
 | `coderm.inactiveOverlay.delay`                   | `number`   | `300`                                            | Delay before showing overlay when inactive (ms, 0–5000)                 |
