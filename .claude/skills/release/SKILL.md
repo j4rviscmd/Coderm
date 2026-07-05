@@ -39,6 +39,7 @@ Codermはupstream（VS Code）のforkであり、独自のバージョニング�
 | **CI監視は`/monitor-pr-ci`スキルで実行** | 30秒ポーリング・15分タイムアウトが実装済みのため |
 | **GitHub Release作成・タグプッシュは絶対禁止** | タグ生成・Releaseページ作成はCI/CDパイプライン（release.yml）が担当する。AIが手動で実行すると二重実行・競合が発生する |
 | **PRマージ後のbranchは必ず削除** | リモート・ローカル両方削除してリポジトリを整理する |
+| **lockfile再生成は `npm i --package-lock-only` を使用** | `sed`等によるlockfileの文字列置換は、他の依存関係のバージョン文字列と衝突するリスクや整合性破壊のリスクがあるため禁止。`npm i --package-lock-only` は node_modules を変更せず lockfile のみ安全に再生成する |
 | **バージョンフォーマットは必ずセマンティック（3セグメント）** | Codermバージョンは `X.Y.Z` または `X.Y.Z-coderm.A.B.C` のいずれか。セグメントの省略（例: `coderm.0.10` のように末尾 `.0` を省略）は禁止。Step 3-2・Step 4・Step 6の各タイミングで正規表現検証を必ず実行すること |
 
 ## コンテキスト情報
@@ -52,14 +53,7 @@ Codermはupstream（VS Code）のforkであり、独自のバージョニング�
 
 ### Step 0: タスク管理の開始
 
-**重要:** 以下の10のタスクを順番に作成してください（Step 11は完了報告のみのためタスク管理対象外）。
-
-**実行手順:**
-1. 最初にタスク1（前提条件チェック）を作成
-2. タスク1の作成完了後、タスク1のIDを確認
-3. タスク2を作成し、`addBlockedBy`にタスク1のIDを指定
-4. タスク2〜10についても同様に、前のタスクのIDを指定して作成
-5. タスクは要約せず、記載通りに個別に作成すること
+**重要:** 以下の10のタスクを順番に作成してください（Step 11は完了報告のみのため対象外）。各タスクを作成したらIDを確認し、次のタスクの `addBlockedBy` に指定して依存関係を構築してください。タスクは要約せず、記載通りに個別に作成すること。
 
 ```bash
 # タスク1: 前提条件チェック
@@ -107,7 +101,8 @@ TaskCreate:
   バージョン参照する全ファイルのバージョンを更新
   - package.json: "version" フィールド（sedで正規表現置換、-coderm.X.Y.Z形式対応）
   - extensions/copilot/package.json: "engines.vscode" フィールド（sedで文字列置換）
-  - package-lock.json（ルート・extensions/copilot）: バージョン参照（sedで文字列置換）
+  - package-lock.json（ルート・extensions/copilot）: npm i --package-lock-only で再生成（sedによる文字列置換は廃止。壊れやすいため）
+  - git diff で lockfile のdiffを確認（バージョン参照の更新が正しく反映されたか、予期しない依存関係の変更が混入していないか必ず確認）
   - 更新後に grep -rn で旧バージョンの残存がないか検証
   - git diff で更新内容を確認
 - activeForm: バージョンファイルを更新中
@@ -347,6 +342,7 @@ echo ""
 echo "次期バージョン: $next_version"
 echo "理由: $version_reason"
 
+# Why: this format check runs at 3 stages (here at calc / Step 4 after file update / Step 6 pre-commit) as defense-in-depth against segment-omission bugs such as coderm.0.10 missing the trailing .0. Introduced in PR #111 (commit dd45de8d) after such a mistake recurred.
 # 次期バージョンのフォーマット検証（必須）
 if ! echo "$next_version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-coderm\.[0-9]+\.[0-9]+\.[0-9]+)?$'; then
   echo "エラー: 次期バージョンのフォーマットが不正です: $next_version"
@@ -366,9 +362,7 @@ fi
 
 #### 3-3: バージョン計算の自己検証（必須）
 
-**AskUserQuestionを表示する前に、以下の検証を必ず実行してください。**
-
-計算した `next_version` が正しいことを、セグメントごとに照合します:
+AskUserQuestionを表示する前に、計算した `next_version` をセグメントごとに照合してください:
 
 1. 現在バージョン `{A.B.C-coderm.D.E.F}` の各セグメントを確認
 2. リリース種別に対応するセグメントのみが変更されているか確認（「仕様・制約」セクションのテーブル参照）
@@ -410,6 +404,7 @@ v{next_version}
 # バージョンを更新（Coderm版）
 # 正規表現は標準フォーマット（1.121.0）とCodermフォーマット（1.121.0-coderm.0.1.0）の両方にマッチ
 if [ "$next_version" != "$current_version" ]; then
+  # Constraint: `sed -i ''` is BSD/macOS in-place syntax. On GNU sed (Git Bash on Windows / Linux) the empty '' is parsed as the script expression and the real expression is treated as a filename, so the command fails (verified: exit 2 on win32 Git Bash). Adapt the in-place flag to the platform before running; the same applies to the copilot sed below.
   sed -i '' -E 's/"version"\s*:\s*"[0-9]+\.[0-9]+\.[0-9]+(-coderm\.[0-9]+\.[0-9]+\.[0-9]+)?"/"version": "'"$next_version"'"/' "$version_file"
   echo ""
   echo "バージョンを更新: $version_file"
@@ -429,16 +424,31 @@ if [ -f "$copilot_pkg" ]; then
   echo "  $current_version → $next_version"
 fi
 
-# package-lock.json（ルート・extensions/copilot）のバージョン参照も更新
-lock_files=("package-lock.json" "extensions/copilot/package-lock.json")
+# package-lock.json（ルート・extensions/copilot）は npm i --package-lock-only で再生成
+# 注意: sedによる文字列置換は、他の依存関係のバージョン文字列と衝突するリスクや
+# lockfileの整合性を損なうリスクがあるため廃止。
+# npm i --package-lock-only は node_modules を変更せず lockfile のみを再生成し、
+# package.json の version 変更を lockfile のルート version に正しく反映する。
+echo "package-lock.json を再生成中（npm i --package-lock-only）..."
+npm i --package-lock-only
+echo "ルートの package-lock.json を再生成しました"
 
-for lock_file in "${lock_files[@]}"; do
-  if [ -f "$lock_file" ]; then
-    sed -i '' "s/${current_version}/${next_version}/g" "$lock_file"
-    echo "バージョンを更新: $lock_file"
-    echo "  $current_version → $next_version"
-  fi
-done
+if [ -f "extensions/copilot/package.json" ]; then
+  echo "extensions/copilot/package-lock.json を再生成中..."
+  (cd extensions/copilot && npm i --package-lock-only)
+  echo "extensions/copilot/package-lock.json を再生成しました"
+fi
+
+# lockfile の diff を確認（必須）
+# バージョン参照の更新が正しく反映されたかに加え、依存関係の予期しない変更
+# （間接依存のアップデート等）が混入していないかを必ず目視確認すること。
+# 予期しない変更がある場合は、ユーザーに報告して続行可否を判断すること。
+echo ""
+echo "=== package-lock.json のdiff（先頭50行）==="
+git diff package-lock.json | head -50
+echo ""
+echo "=== extensions/copilot/package-lock.json のdiff（先頭50行）==="
+git diff extensions/copilot/package-lock.json | head -50
 
 # 更新後の検証: 旧バージョン文字列の残存チェック
 # これにより、更新漏れがあった場合は確実に検出できる
@@ -667,8 +677,8 @@ Codermは `package.json` の `version` フィールドを唯一のsource of trut
 |---|---|---|
 | `package.json` | `"version"` | source of truth |
 | `extensions/copilot/package.json` | `"engines.vscode"` | pre-commit hookがpackage.json#versionとの一致を検証 |
-| `package-lock.json` | `"version"` 等 | ルート |
-| `extensions/copilot/package-lock.json` | `"vscode"` | copilot拡張 |
+| `package-lock.json` | `"version"` 等 | ルート。`npm i --package-lock-only` で再生成（sed置換は廃止） |
+| `extensions/copilot/package-lock.json` | `"vscode"` | copilot拡張。`extensions/copilot/` で `npm i --package-lock-only` で再生成 |
 
 package.jsonの`version`に`-coderm.X.Y.Z`プレリリース識別子を含めることで、バージョン管理をpackage.jsonで一元化しています。ビルド時に `quality="coderm"` に基づいて `-coderm` サフィックスが付加され、`product.json#version` に書き込まれます（二重付加を防止するロジックが`gulpfile.vscode.ts`に実装済み）。
 
