@@ -219,9 +219,7 @@ jobs:
       - name: Create swap
         if: runner.os == 'Linux'
         run: |
-          if swapon --show=NAME --noheadings | grep -q '/swapfile'; then
-            sudo swapoff /swapfile
-          fi
+          sudo swapoff /swapfile 2>/dev/null || true
           sudo rm -f /swapfile
           sudo fallocate -l 8G /swapfile
           sudo chmod 600 /swapfile
