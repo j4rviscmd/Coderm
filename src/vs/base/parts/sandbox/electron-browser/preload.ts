@@ -14,7 +14,9 @@
 	//#region Utilities
 
 	function validateIPC(channel: string): true | never {
-		if (!channel?.startsWith('vscode:')) {
+		// Coderm: allow coderm: prefixed IPC channels (e.g. Language Host message port)
+		// in addition to the upstream vscode: channels.
+		if (!channel?.startsWith('vscode:') && !channel?.startsWith('coderm:')) {
 			throw new Error(`Unsupported event IPC channel '${channel}'`);
 		}
 

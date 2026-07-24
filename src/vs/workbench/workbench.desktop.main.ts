@@ -62,6 +62,7 @@ import './services/secrets/electron-browser/secretStorageService.js';
 import './services/localization/electron-browser/languagePackService.js';
 import './services/telemetry/electron-browser/telemetryService.js';
 import './services/extensions/electron-browser/extensionHostStarter.js';
+import './services/languageHost/electron-browser/languageHostService.js';
 import '../platform/extensionResourceLoader/common/extensionResourceLoaderService.js';
 import './services/localization/electron-browser/localeService.js';
 import './services/extensions/electron-browser/extensionsScannerService.js';

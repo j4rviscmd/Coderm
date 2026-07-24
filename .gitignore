@@ -21,6 +21,7 @@ vscode.lsif
 vscode.db
 /.profile-oss
 /cli/target
+/rust/target
 /cli/openssl
 product.overrides.json
 *.snap.actual

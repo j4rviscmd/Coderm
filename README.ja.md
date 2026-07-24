@@ -80,6 +80,8 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.workbench.editor.separateTerminalEditors` | `boolean`  | `true`                                           | ターミナルエディタとテキストエディタを同じグループに混在させない。Quick Open等のデフォルトの開く操作で、既存の同種グループ（なければ新規）に振り分ける |
 | `coderm.workbench.editor.singleTerminalEditorPerGroup` | `boolean`  | `true`                                           | 1つのエディタグループにターミナルエディタは1つだけ。新規ターミナルは空きグループ（なければ新規）に開き、既存ターミナルグループにタブを追加しない |
 | `coderm.workbench.editor.disableGroupLock`        | `boolean`  | `true`                                           | エディタグループのロック機能を完全に無効化。グループは自動・手動を問わずロックできず、常にロック解除状態で動作 |
+| `coderm.languageHost.enabled`                    | `boolean`  | `false`                                          | （実験的）ネイティブ Language Host プロセスを有効化（Phase 0: 自己テストのみ。言語機能は未実装） |
+| `coderm.languageHost.languages`                  | `array`    | `[]`                                             | （実験的）ネイティブ Host で処理する言語 ID（予約） |
 
 ---
 
