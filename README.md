@@ -80,6 +80,8 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.workbench.editor.separateTerminalEditors` | `boolean`  | `true`                                           | Never mix terminal and text editors in one group; Quick Open and other default open paths route to an existing same-type group (or a new one) instead of mixing |
 | `coderm.workbench.editor.singleTerminalEditorPerGroup` | `boolean`  | `true`                                           | Limit each editor group to a single terminal editor; opening a new terminal routes to an empty group (or creates one) instead of adding a tab to an existing terminal group |
 | `coderm.workbench.editor.disableGroupLock`        | `boolean`  | `true`                                           | Completely disable the editor group lock feature — groups can never be locked (automatically or manually) and always behave as unlocked |
+| `coderm.languageHost.enabled`                    | `boolean`  | `false`                                          | _(experimental)_ Enable the native Language Host process (Phase 0: runs a self-test only; no language features yet) |
+| `coderm.languageHost.languages`                  | `array`    | `[]`                                             | _(experimental)_ Reserved for language IDs to handle in the native host |
 
 ---
 

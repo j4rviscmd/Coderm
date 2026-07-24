@@ -19,6 +19,7 @@ import './editorGroupPolicy.js';
 import './gitWorktreeDefaults.js';
 import './hideTitleBarMoreActions.js';
 import './inactiveOverlay.js';
+import './languageHostConfiguration.js';
 import './modalEditorActions.js';
 import './openReadme.js';
 import './preventNewGroupOnFocus.js';

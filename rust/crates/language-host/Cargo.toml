@@ -1,0 +1,12 @@
+[package]
+name = "coderm-language-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "coderm-language-host"
+path = "src/main.rs"
+
+# Phase 0: no dependencies. FlatBuffers will be added back in Phase 1 (main-process side).
+[dependencies]
