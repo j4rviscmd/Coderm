@@ -18,7 +18,7 @@
 
 **Coderm = VS Code + Terminal**
 
-A customized fork of VS Code with UI/UX improvements not found in upstream.
+A highly customized fork of VS Code optimized for Vim/Neovim users, prioritizing custom optimizations over upstream synchronization.
 
 </div>
 
@@ -26,9 +26,9 @@ A customized fork of VS Code with UI/UX improvements not found in upstream.
 
 ## Motivation
 
-- Freely integrate UX improvements that are unlikely to be merged into upstream VS Code
+- Prioritize custom optimizations and performance improvements tailored for terminal-focused workflows
 - Provide settings and keybindings optimized for Vim/Neovim users
-- Regularly merge upstream features and security patches (monthly cadence)
+- Upstream is not regularly merged; individual features/patches are considered on-demand via custom implementation
 
 ---
 
