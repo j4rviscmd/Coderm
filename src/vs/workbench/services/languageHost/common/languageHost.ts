@@ -43,6 +43,12 @@ export interface ILanguageHostService {
 	 * (a FoldingRange[] shape).
 	 */
 	requestFoldingRange(uri: string): Promise<string>;
+
+	/**
+	 * Request hover information for a position in a synced document.
+	 * Returns the host's JSON string (a Hover shape or null).
+	 */
+	requestHover(uri: string, line: number, column: number): Promise<string>;
 }
 
 // --- Coderm end ---

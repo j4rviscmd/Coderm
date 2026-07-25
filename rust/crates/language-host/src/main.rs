@@ -1,4 +1,4 @@
-// Coderm Language Host (Phase 1: request-id multiplexer + document sync + tree-sitter features).
+// Coderm Language Host (Phase 2: hover + Phase 1.5 robustness).
 //
 // Wire format: [4 bytes LE request_id][4 bytes LE length][payload(JSON)].
 //   request_id == 0  → notification (no response). Used for document sync.
@@ -9,11 +9,16 @@
 //   - document/close:   {type:"document/close",   uri}
 //   - documentSymbol:   {type:"documentSymbol",   uri}  → [DocumentSymbol]
 //   - foldingRange:     {type:"foldingRange",     uri}  → [FoldingRange]
+//   - hover:            {type:"hover",            uri, line, column} → HoverResponse | null
 //
-// Caution: tree-sitter positions are 0-indexed byte offsets; VS Code DocumentSymbol
-// line/column are 1-indexed. Phase 1 converts with a simple +1 — columns coincide for
-// ASCII but drift for non-ASCII identifiers (UTF-8 byte offset vs UTF-16 code unit).
-// Reconciliation is TODO for Phase 2.
+// Phase 2 additions:
+//   - hover: function/method/class/interface/type/typed-variable signatures with JSDoc
+//   - UTF-16 column reconciliation for hover positions (Phase 1.5)
+//
+// Caution: tree-sitter positions are 0-indexed byte offsets; VS Code positions are
+// 1-indexed. Phase 1 documentSymbol/foldingRange convert with byte-column + 1 (drifts on
+// non-ASCII selectionRange columns — TODO retained). Phase 2 reconciles UTF-8 byte offsets
+// to UTF-16 code units for hover only, since hover receives a renderer (line, column).
 
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -49,6 +54,9 @@ enum Message {
     DocumentSymbol { uri: String },
     #[serde(rename = "foldingRange")]
     FoldingRange { uri: String },
+    // line/column are the renderer's Position (1-indexed; column is UTF-16 code units).
+    #[serde(rename = "hover")]
+    Hover { uri: String, line: u32, column: u32 },
 }
 
 struct Document {
@@ -80,6 +88,17 @@ struct Range {
 struct FoldingRange {
     start: u32,
     end: u32,
+}
+
+// Phase 2 hover response. The renderer wraps `signature` in a ```typescript MarkdownString
+// code block and renders `documentation` as a second MarkdownString (matching the built-in TS
+// hover). Keeping markdown shaping on the renderer side avoids markdown pitfalls in Rust.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HoverResponse {
+    signature: String,
+    documentation: String,
+    range: Range, // name-token range, so the highlight matches the hovered identifier
 }
 
 struct LanguageHost {
@@ -147,11 +166,41 @@ impl LanguageHost {
                     serde_json::to_string(&ranges).map_err(|e| e.to_string())?,
                 ))
             }
+            Message::Hover { uri, line, column } => Ok(Some(self.hover_json(&uri, line, column))),
+        }
+    }
+
+    // Hover always emits a JSON string: the serialized response on success, or "null" on
+    // any failure. Why not bubble up via `?`: document() / hover_at_position() /
+    // to_string() errors must resolve to "null" here, not bubble to the main loop's
+    // generic `b"[]"` fallback — `[]` is a valid DocumentSymbol/FoldingRange shape but
+    // breaks hover (the renderer would build a "```typescript undefined```" tooltip).
+    fn hover_json(&self, uri: &str, line: u32, column: u32) -> String {
+        let doc = match self.document(uri) {
+            Ok(doc) => doc,
+            Err(e) => {
+                eprintln!("[languageHost] hover error (unknown uri): {}", e);
+                return "null".to_string();
+            }
+        };
+        match hover_at_position(&doc.language_id, &doc.content, line, column) {
+            Ok(Some(response)) => serde_json::to_string(&response).unwrap_or_else(|e| {
+                eprintln!("[languageHost] hover serialization error: {}", e);
+                "null".to_string()
+            }),
+            Ok(None) => "null".to_string(),
+            Err(e) => {
+                eprintln!("[languageHost] hover error: {}", e);
+                "null".to_string()
+            }
         }
     }
 }
 
 fn parse_source(language_id: &str, content: &str) -> Result<tree_sitter::Tree, String> {
+    // Note: tree-sitter-typescript 0.23 exposes LANGUAGE_TYPESCRIPT / LANGUAGE_TSX as LanguageFn
+    // constants (NOT callable functions); `.into()` converts each to a Language. The 0.22 form is
+    // absent from crates.io, so 0.23 is the baseline (rust/crates/language-host/Cargo.toml).
     let language: Language = match language_id {
         "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(),
@@ -179,7 +228,7 @@ fn folding_ranges(language_id: &str, content: &str) -> Result<Vec<FoldingRange>,
 }
 
 // tree-sitter Point is 0-indexed; VS Code line/column are 1-indexed. See file header
-// for the non-ASCII column caveat.
+// for the non-ASCII column caveat (Phase 1 symbol/fold remain byte-column + 1).
 fn range_from_points(start: Point, end: Point) -> Range {
     Range {
         start_line_number: start.row as u32 + 1,
@@ -209,14 +258,18 @@ fn collect_symbols(node: Node, source: &str, symbols: &mut Vec<DocumentSymbol>) 
 }
 
 fn symbol_for_node(node: Node, source: &str) -> Option<DocumentSymbol> {
-    // SymbolKind numeric values mirror VS Code's SymbolKind enum.
+    // SymbolKind numeric values mirror VS Code's SymbolKind enum (languages.ts:1595).
+    // Why these exact numbers: languageFeatures.ts casts `kind` straight to SymbolKind via
+    // `as SymbolKind` (no LSP conversion layer), so the values must already be VS Code's enum
+    // (Class=4, Method=5, Enum=9, Interface=10, Function=11, TypeParameter=25) — NOT LSP's
+    // off-by-one numbers, or outline icons would render one slot off.
     let kind_num = match node.kind() {
-        "function_declaration" | "generator_function_declaration" | "function_signature" => 12, // Function
-        "class_declaration" | "abstract_class_declaration" => 5, // Class
-        "method_definition" | "method_signature" | "abstract_method_signature" => 6, // Method
-        "interface_declaration" => 11,                           // Interface
-        "enum_declaration" => 10,                                // Enum
-        "type_alias_declaration" => 26,                          // TypeParameter
+        "function_declaration" | "generator_function_declaration" | "function_signature" => 11, // Function
+        "class_declaration" | "abstract_class_declaration" => 4, // Class
+        "method_definition" | "method_signature" | "abstract_method_signature" => 5, // Method
+        "interface_declaration" => 10,                           // Interface
+        "enum_declaration" => 9,                                 // Enum
+        "type_alias_declaration" => 25,                          // TypeParameter
         _ => return None,
     };
     let name_node = node.child_by_field_name("name")?;
@@ -262,6 +315,182 @@ fn is_foldable(kind: &str) -> bool {
             | "block"
             | "named_imports"
     )
+}
+
+// Phase 2: hover provider. Returns signature + JSDoc for function/method/class/interface/
+// type/typed-variable declarations. Resolves the renderer's (line, UTF-16 column) to a
+// tree-sitter Point, finds the deepest node, walks up to the enclosing declaration, and
+// only emits a hover when the point is on the declaration's name token (matches TS behavior).
+fn hover_at_position(
+    language_id: &str,
+    content: &str,
+    line_1: u32,
+    column_1: u32,
+) -> Result<Option<HoverResponse>, String> {
+    let tree = parse_source(language_id, content)?;
+    let row_0 = line_1.saturating_sub(1) as usize;
+    let column_0_utf8 = utf16_column_to_utf8_byte(content, row_0, column_1)?;
+    let point = Point {
+        row: row_0,
+        column: column_0_utf8,
+    };
+
+    // Deepest named node at the point, then walk up to the enclosing declaration.
+    let leaf = match tree
+        .root_node()
+        .named_descendant_for_point_range(point, point)
+    {
+        Some(n) => n,
+        None => return Ok(None),
+    };
+    let decl = match walk_up_to_declaration(leaf) {
+        Some(d) => d,
+        None => return Ok(None),
+    };
+
+    // Gate on the name token: hover only fires on the identifier, not on the body. This
+    // mirrors the built-in TS hover (hovering inside a function body returns nothing).
+    let name_node = match decl.child_by_field_name("name") {
+        Some(n) => n,
+        None => return Ok(None),
+    };
+    if !point_in_node_range(point, name_node) {
+        return Ok(None);
+    }
+
+    // variable_declarator / public_field_definition are only useful with a type annotation
+    // (`const x = 1` has nothing to say; `const x: number` does).
+    if matches!(
+        decl.kind(),
+        "variable_declarator" | "public_field_definition"
+    ) && decl.child_by_field_name("type").is_none()
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(HoverResponse {
+        signature: signature_slice(decl, content),
+        documentation: collect_jsdoc(decl, content),
+        range: range_from_points(name_node.start_position(), name_node.end_position()),
+    }))
+}
+
+// Reconcile a renderer (row_0, column_1) to a tree-sitter UTF-8 byte column on that row.
+// Why per-row walk: tree-sitter Point.column is a UTF-8 byte offset relative to the row,
+// while the renderer's Position.column is 1-indexed UTF-16 code units. For non-ASCII
+// (emoji/CJK) the two diverge, so we count UTF-16 units char-by-char until column_1 - 1.
+fn utf16_column_to_utf8_byte(content: &str, row_0: usize, column_1: u32) -> Result<usize, String> {
+    let line_str = content
+        .lines()
+        .nth(row_0)
+        .ok_or_else(|| format!("row {} out of range", row_0))?;
+    let target = column_1.saturating_sub(1) as usize; // renderer column is 1-indexed
+    let mut utf16_seen = 0usize;
+    let mut byte_offset = 0usize;
+    for c in line_str.chars() {
+        if utf16_seen >= target {
+            break;
+        }
+        utf16_seen += c.len_utf16();
+        byte_offset += c.len_utf8();
+    }
+    Ok(byte_offset)
+}
+
+fn walk_up_to_declaration<'a>(start: Node<'a>) -> Option<Node<'a>> {
+    let mut cursor = Some(start);
+    while let Some(n) = cursor {
+        if is_hover_declaration_kind(n.kind()) {
+            return Some(n);
+        }
+        cursor = n.parent();
+    }
+    None
+}
+
+fn is_hover_declaration_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "function_declaration"
+            | "generator_function_declaration"
+            | "function_signature"
+            | "method_definition"
+            | "method_signature"
+            | "abstract_method_signature"
+            | "class_declaration"
+            | "abstract_class_declaration"
+            | "interface_declaration"
+            | "type_alias_declaration"
+            | "variable_declarator"
+            | "public_field_definition"
+    )
+}
+
+fn point_in_node_range(point: Point, node: Node) -> bool {
+    let s = node.start_position();
+    let e = node.end_position();
+    !(point.row < s.row
+        || point.row > e.row
+        || (point.row == s.row && point.column < s.column)
+        || (point.row == e.row && point.column >= e.column))
+}
+
+// Signature slice: source[decl.start_byte() .. body.start_byte()) for kinds with a body;
+// whole node for type_alias_declaration / *_signature. Trim trailing whitespace. This keeps
+// async/generics/params/return-type verbatim as the author wrote them (no reconstruction).
+fn signature_slice(decl: Node, source: &str) -> String {
+    let end_byte = if decl.kind() == "type_alias_declaration" || decl.kind().ends_with("signature")
+    {
+        decl.end_byte()
+    } else {
+        decl.child_by_field_name("body")
+            .map(|b| b.start_byte())
+            .unwrap_or(decl.end_byte())
+    };
+    source[decl.start_byte()..end_byte].trim_end().to_string()
+}
+
+// Walk prev_sibling collecting consecutive `comment` nodes whose text starts with `/**`.
+// Comments are named siblings (not children), so prev_sibling (not prev_named_sibling) is
+// correct. Returns the stripped JSDoc text, or empty if no leading JSDoc.
+fn collect_jsdoc(decl: Node, source: &str) -> String {
+    let mut blocks: Vec<&str> = Vec::new();
+    let mut cursor = decl.prev_sibling();
+    while let Some(c) = cursor {
+        let text = node_text(c, source);
+        if c.kind() != "comment" || !text.starts_with("/**") {
+            break;
+        }
+        blocks.push(text);
+        cursor = c.prev_sibling();
+    }
+    if blocks.is_empty() {
+        return String::new();
+    }
+    blocks.reverse();
+    strip_jsdoc(&blocks.join("\n"))
+}
+
+// Strip the `/** ... */` markers and per-line `* ` prefixes from a JSDoc block.
+fn strip_jsdoc(combined: &str) -> String {
+    let trimmed = combined
+        .strip_prefix("/**")
+        .and_then(|s| s.strip_suffix("*/"))
+        .unwrap_or(combined);
+    trimmed
+        .lines()
+        .map(|line| {
+            let stripped = line.trim();
+            match stripped.strip_prefix('*') {
+                // After stripping `*` and an optional leading space, re-trim to drop any
+                // trailing whitespace (e.g. "* foo  " → "foo").
+                Some(rest) => rest.strip_prefix(' ').unwrap_or(rest).trim(),
+                None => stripped,
+            }
+        })
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // Emits one [reqId(4)][length(4)][payload] frame to stdout.

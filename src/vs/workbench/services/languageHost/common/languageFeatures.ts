@@ -16,8 +16,12 @@ import {
 	FoldingContext,
 	FoldingRange,
 	FoldingRangeProvider,
+	Hover,
+	HoverProvider,
 	SymbolKind,
 } from '../../../../editor/common/languages.js';
+import { IMarkdownString, MarkdownString } from '../../../../base/common/htmlContent.js';
+import { Position } from '../../../../editor/common/core/position.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
 import { ILanguageHostService } from './languageHost.js';
 
@@ -33,6 +37,12 @@ interface DocumentSymbolResponse {
 interface FoldingRangeResponse {
 	start: number;
 	end: number;
+}
+
+interface HoverResponse {
+	signature: string;
+	documentation: string;
+	range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
 }
 
 class CodermDocumentSymbolProvider implements DocumentSymbolProvider {
@@ -68,6 +78,29 @@ class CodermFoldingRangeProvider implements FoldingRangeProvider {
 			return parseFoldingRanges(json);
 		} catch (err) {
 			console.error('[CodermFoldingRangeProvider] request failed', err);
+			return undefined;
+		}
+	}
+}
+
+class CodermHoverProvider implements HoverProvider {
+	readonly displayName = 'Coderm Language Host';
+
+	constructor(private readonly languageHostService: ILanguageHostService) { }
+
+	async provideHover(model: ITextModel, position: Position, token: CancellationToken): Promise<Hover | undefined> {
+		if (token.isCancellationRequested) {
+			return undefined;
+		}
+		try {
+			const json = await this.languageHostService.requestHover(
+				model.uri.toString(),
+				position.lineNumber,
+				position.column
+			);
+			return parseHover(json);
+		} catch (err) {
+			console.error('[CodermHoverProvider] request failed', err);
 			return undefined;
 		}
 	}
@@ -112,6 +145,36 @@ function parseFoldingRanges(json: string): FoldingRange[] {
 	return parseJsonArray<FoldingRangeResponse>(json).map((r): FoldingRange => ({ start: r.start, end: r.end }));
 }
 
+function parseHover(json: string): Hover | undefined {
+	// Note: the host's hover "no result" sentinel is the literal string "null" (hover_json in
+	// rust/crates/language-host/src/main.rs), unlike documentSymbol/foldingRange which fall back
+	// to "[]". Treat both "null" and empty as no-hover so a null reply never renders as a
+	// "```typescript undefined```" tooltip.
+	if (json === 'null' || json === '') {
+		return undefined;
+	}
+	let raw: unknown;
+	try {
+		raw = JSON.parse(json);
+	} catch {
+		return undefined;
+	}
+	if (!raw || typeof raw !== 'object') {
+		return undefined;
+	}
+	const response = raw as HoverResponse;
+	// Wrap signature in a ```typescript code block; render JSDoc as a second markdown string.
+	// Why renderer-side shaping: keeps markdown construction out of Rust and matches the
+	// built-in TS hover (appendCodeblock + documentation markdown).
+	const contents: IMarkdownString[] = [
+		new MarkdownString('```typescript\n' + response.signature + '\n```'),
+	];
+	if (response.documentation) {
+		contents.push(new MarkdownString(response.documentation));
+	}
+	return { contents, range: response.range };
+}
+
 export function registerLanguageFeatureProviders(
 	languageHostService: ILanguageHostService,
 	languages: string[],
@@ -119,11 +182,13 @@ export function registerLanguageFeatureProviders(
 ): IDisposable {
 	const documentSymbolProvider = new CodermDocumentSymbolProvider(languageHostService);
 	const foldingRangeProvider = new CodermFoldingRangeProvider(languageHostService);
+	const hoverProvider = new CodermHoverProvider(languageHostService);
 
 	// Why a flat string[] selector: each entry is a language id; VS Code invokes the provider
 	// only for models whose language matches, so no extra in-provider filtering is needed.
 	return combinedDisposable(
 		languageFeaturesService.documentSymbolProvider.register(languages, documentSymbolProvider),
 		languageFeaturesService.foldingRangeProvider.register(languages, foldingRangeProvider),
+		languageFeaturesService.hoverProvider.register(languages, hoverProvider),
 	);
 }
