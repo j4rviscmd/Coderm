@@ -3,17 +3,22 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Coderm: Language Host configuration + Phase 0 self-test. Registers coderm.languageHost.*
-// settings (default off so main stays inert) and runs a single echo round-trip when enabled.
+// Coderm: Language Host configuration + Phase 1 feature registration. Registers
+// coderm.languageHost.* settings (default off so main stays inert) and, when enabled with a
+// non-empty language set, registers tree-sitter-backed documentSymbol/foldingRange providers
+// and syncs open models to the native host.
 
-import { Disposable } from '../../../../base/common/lifecycle.js';
 import { localize } from '../../../../nls.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ConfigurationScope, Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
+import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
 import { ILanguageHostService } from '../../../services/languageHost/common/languageHost.js';
+import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
+import { IModelService } from '../../../../editor/common/services/model.js';
+import { registerLanguageFeatureProviders } from '../../../services/languageHost/common/languageFeatures.js';
 
 export const CodermLanguageHostEnabledSetting = 'coderm.languageHost.enabled';
 
@@ -26,33 +31,34 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 		[CodermLanguageHostEnabledSetting]: {
 			type: 'boolean',
 			// Note: default:false intentionally deviates from the project's "new settings
-			// default to enabled" convention (project CLAUDE.md, development rules). Phase 0 only
-			// validates the wire path; defaulting true would spawn the Rust host for every
-			// user before any language feature ships. Revisit once Phase 1 adds a user-facing
-			// capability.
+			// default to enabled" convention (project CLAUDE.md, development rules). The host
+			// spawns a Rust process and parses every open document of the configured languages;
+			// defaulting true would opt every user into that before the feature is proven.
 			default: false,
 			scope: ConfigurationScope.APPLICATION,
 			description: localize('coderm.languageHost.enabled',
-				"Enable the native (Rust) Language Host. When enabled, language features for the configured languages are offloaded from the Extension Host to a separate native process to reduce memory and CPU usage."),
+				"Enable the native (Rust) Language Host. When enabled, documentSymbol and foldingRange for the configured languages are computed by tree-sitter in a separate native process."),
 		},
 		'coderm.languageHost.languages': {
 			type: 'array',
 			default: [],
 			scope: ConfigurationScope.APPLICATION,
 			description: localize('coderm.languageHost.languages',
-				"Language IDs handled by the native Language Host. Empty (default) keeps the feature inert; Phase 0 only validates the communication path."),
+				"Language IDs handled by the native Language Host (e.g. \"typescript\", \"tsx\"). Empty (default) keeps the feature inert."),
 			items: { type: 'string' },
 		},
 	},
 });
 
-class LanguageHostPhase0Contribution extends Disposable implements IWorkbenchContribution {
-	static readonly ID = 'workbench.contrib.coderm.languageHostPhase0';
+class LanguageHostPhase1Contribution extends Disposable implements IWorkbenchContribution {
+	static readonly ID = 'workbench.contrib.coderm.languageHostPhase1';
 
 	constructor(
 		@ILanguageHostService languageHostService: ILanguageHostService,
+		@ILanguageFeaturesService languageFeaturesService: ILanguageFeaturesService,
+		@IModelService modelService: IModelService,
 		@IConfigurationService configurationService: IConfigurationService,
-		@ILogService private readonly logService: ILogService,
+		@ILogService logService: ILogService,
 	) {
 		super();
 
@@ -60,13 +66,32 @@ class LanguageHostPhase0Contribution extends Disposable implements IWorkbenchCon
 			return; // feature off: main stays untouched
 		}
 
+		const languages = configurationService.getValue<string[]>('coderm.languageHost.languages') || [];
+		if (languages.length === 0) {
+			logService.info('[coderm.languageHost] no languages configured, feature inert');
+			return;
+		}
+
 		languageHostService.whenReady()
-			.then(() => languageHostService.echo(new Uint8Array([1, 2, 3, 4, 5])))
-			.then(result => this.logService.info(`[coderm.languageHost] phase 0 echo self-test OK: echoed ${result.byteLength} bytes`))
-			.catch(err => this.logService.error('[coderm.languageHost] phase 0 echo self-test FAILED', err));
+			.then(() => {
+				logService.info('[coderm.languageHost] starting Phase 1 (documentSymbol + foldingRange via tree-sitter)');
+
+				this._register(registerLanguageFeatureProviders(languageHostService, languages, languageFeaturesService));
+
+				// Sync every currently-open model, then track add/remove so the host buffer
+				// matches the renderer for the lifetime of the window.
+				for (const model of modelService.getModels()) {
+					languageHostService.syncDocument(model);
+				}
+				this._register(modelService.onModelAdded(model => languageHostService.syncDocument(model)));
+				this._register(modelService.onModelRemoved(model => languageHostService.unsyncDocument(model.uri.toString())));
+
+				logService.info(`[coderm.languageHost] active for languages: ${languages.join(', ')}`);
+			})
+			.catch(err => logService.error('[coderm.languageHost] failed to start', err));
 	}
 }
 
-registerWorkbenchContribution2(LanguageHostPhase0Contribution.ID, LanguageHostPhase0Contribution, WorkbenchPhase.AfterRestored);
+registerWorkbenchContribution2(LanguageHostPhase1Contribution.ID, LanguageHostPhase1Contribution, WorkbenchPhase.AfterRestored);
 
 // --- Coderm end ---

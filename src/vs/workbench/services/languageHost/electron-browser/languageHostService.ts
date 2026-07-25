@@ -15,8 +15,11 @@ import { InstantiationType, registerSingleton } from '../../../../platform/insta
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { INativeHostService } from '../../../../platform/native/common/native.js';
 import { ILanguageHostServerService, ipcLanguageHostServerChannelName } from '../../../../platform/languageHost/common/languageHostServer.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { ITextModel } from '../../../../editor/common/model.js';
 import { ILanguageHostService } from '../common/languageHost.js';
 import { LanguageHostProtocol } from '../common/languageHostProtocol.js';
+import { DocumentSyncManager, DocumentSyncMessage } from '../common/documentSync.js';
 
 // Channel name shared with the main process side (see languageHostServerService).
 // Constraint: the `coderm:` prefix is required, not cosmetic. The sandboxed preload's
@@ -31,11 +34,14 @@ export class NativeLanguageHostService extends Disposable implements ILanguageHo
 
 	private protocol: LanguageHostProtocol | undefined;
 	private _whenReadyPromise: Promise<void> | undefined;
+	private documentSyncManager: DocumentSyncManager | undefined;
+	private enabledLanguages: Set<string> = new Set();
 
 	constructor(
 		@ILanguageHostServerService private readonly languageHostServerService: ILanguageHostServerService,
 		@INativeHostService private readonly nativeHostService: INativeHostService,
 		@ILogService private readonly logService: ILogService,
+		@IConfigurationService private readonly configurationService: IConfigurationService,
 	) {
 		super();
 		// Lazy: only start when a caller first awaits whenReady(), so the native host
@@ -52,6 +58,10 @@ export class NativeLanguageHostService extends Disposable implements ILanguageHo
 	private async start(): Promise<void> {
 		const nonce = generateUuid();
 
+		// Load enabled languages from configuration.
+		const languages = this.configurationService.getValue<string[]>('coderm.languageHost.languages') || [];
+		this.enabledLanguages = new Set(languages);
+
 		// Begin listening for the port the main process will post back on RESPONSE_CHANNEL,
 		// then ask main (via the proxied server service) to spawn the Rust host and transfer it.
 		const portPromise = acquirePort(undefined, RESPONSE_CHANNEL, nonce);
@@ -61,13 +71,50 @@ export class NativeLanguageHostService extends Disposable implements ILanguageHo
 
 		this.protocol = new LanguageHostProtocol(port);
 		this.logService.info('[languageHost] connected to native host');
+
+		// Document sync uses notifications (fire-and-forget); feature requests use request().
+		this.documentSyncManager = new DocumentSyncManager(
+			(message: DocumentSyncMessage) => this.sendDocumentSyncMessage(message),
+			(languageId: string) => this.enabledLanguages.has(languageId),
+		);
 	}
 
-	async echo(payload: Uint8Array): Promise<Uint8Array> {
+	private sendDocumentSyncMessage(message: DocumentSyncMessage): void {
+		if (!this.protocol) {
+			return;
+		}
+		const json = JSON.stringify(message);
+		this.protocol.notify(new TextEncoder().encode(json));
+	}
+
+	syncDocument(model: ITextModel): void {
+		this.documentSyncManager?.syncDocument(model);
+	}
+
+	unsyncDocument(uri: string): void {
+		this.documentSyncManager?.unsyncDocument(uri);
+	}
+
+	async requestDocumentSymbol(uri: string): Promise<string> {
+		return this.requestFeature({ type: 'documentSymbol', uri });
+	}
+
+	async requestFoldingRange(uri: string): Promise<string> {
+		return this.requestFeature({ type: 'foldingRange', uri });
+	}
+
+	private async requestFeature(message: { type: string; uri: string }): Promise<string> {
 		if (!this.protocol) {
 			throw new Error('Language Host not ready');
 		}
-		return this.protocol.request(payload);
+		const json = JSON.stringify(message);
+		const response = await this.protocol.request(new TextEncoder().encode(json));
+		return new TextDecoder().decode(response);
+	}
+
+	override dispose(): void {
+		this.documentSyncManager?.dispose();
+		super.dispose();
 	}
 }
 

@@ -3,11 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Coderm: Language Host service (renderer side). Phase 0 exposes an echo probe to validate
-// the wire path (renderer -> main relay -> Rust). Phase 1+ adds document sync and language
-// feature dispatch on the same MessagePort acquired at startup.
+// Coderm: Language Host service (renderer side). Phase 1 adds document sync (notifications)
+// and language feature dispatch (requests) on the same MessagePort acquired at startup.
+// The Phase 0 raw echo probe is intentionally removed: the documentSymbol/foldingRange path
+// now carries the wire-path validation that echo used to provide.
 
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { ITextModel } from '../../../../editor/common/model.js';
 
 export const ILanguageHostService = createDecorator<ILanguageHostService>('languageHostService');
 
@@ -15,16 +17,32 @@ export interface ILanguageHostService {
 	readonly _serviceBrand: undefined;
 
 	/**
-	 * Resolves once the MessagePort to the native Language Host is established and the
-	 * first handshake exchange has completed.
+	 * Resolves once the MessagePort to the native Language Host is established.
 	 */
 	whenReady(): Promise<void>;
 
 	/**
-	 * Phase 0 echo probe: sends `payload` to the native host and returns the echoed bytes.
-	 * Throws if the host is not ready or the request times out / errors.
+	 * Start syncing a document to the native host. Sends the full text initially, then
+	 * full-text replaces on every content edit. No-op for languages outside the configured set.
 	 */
-	echo(payload: Uint8Array): Promise<Uint8Array>;
+	syncDocument(model: ITextModel): void;
+
+	/**
+	 * Stop syncing a document (sends document/close).
+	 */
+	unsyncDocument(uri: string): void;
+
+	/**
+	 * Request the document symbol tree for a synced document. Returns the host's JSON string
+	 * (a DocumentSymbol[] shape); the caller parses and shapes it.
+	 */
+	requestDocumentSymbol(uri: string): Promise<string>;
+
+	/**
+	 * Request folding ranges for a synced document. Returns the host's JSON string
+	 * (a FoldingRange[] shape).
+	 */
+	requestFoldingRange(uri: string): Promise<string>;
 }
 
 // --- Coderm end ---

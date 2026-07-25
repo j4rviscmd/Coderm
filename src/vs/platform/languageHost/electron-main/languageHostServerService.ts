@@ -5,7 +5,9 @@
 
 // Coderm: electron-main ILanguageHostServerService implementation. Owns the Rust Language
 // Host child process and the stdio<->MessagePort byte relay.
-// Wire format on stdio: [4 bytes LE length][payload].
+// Wire format on stdio: [4 bytes LE request_id][4 bytes LE length][payload].
+// The relay is a transparent 8-byte-frame pass-through: the renderer emits one frame per
+// MessagePort message, and each Rust response frame is forwarded whole to the renderer.
 // Why a relay (not direct socket): Electron exposes no cross-process shared memory; the
 // tsserver Content-Length framing (see typescript-language-features) is a proven pattern.
 
@@ -24,10 +26,25 @@ import {
 	ILanguageHostStartResult,
 } from '../common/languageHostServer.js';
 
+// Node MessagePort passes the value directly; Electron MessagePortMain may wrap it in a
+// MessageEvent { data }. Buffers may coincidentally carry a `data` field, so skip the
+// unwrap for typed arrays and ArrayBuffers.
+function unwrapPortMessage(e: unknown): unknown {
+	if (
+		e && typeof e === 'object' &&
+		Object.hasOwn(e, 'data') &&
+		!(e instanceof Uint8Array) &&
+		!(e instanceof ArrayBuffer)
+	) {
+		return (e as { data: unknown }).data;
+	}
+	return e;
+}
+
 export class LanguageHostServerService extends Disposable implements ILanguageHostServerService {
 	declare readonly _serviceBrand: undefined;
 
-	private static readonly _frameHeaderBytes = 4;
+	private static readonly _frameHeaderBytes = 8; // request_id (4) + length (4)
 
 	private static _lastId = 0;
 	private readonly _hosts = new Map<string, { process: ChildProcess; port: Electron.MessagePortMain }>();
@@ -98,44 +115,40 @@ export class LanguageHostServerService extends Disposable implements ILanguageHo
 	}
 
 	private _setupRelay(id: string, port: Electron.MessagePortMain, childProcess: ChildProcess): void {
-		// renderer -> Rust: prefix each payload with a 4-byte LE length header.
-		// Node MessagePort passes the value directly; Electron MessagePortMain may wrap it in
-		// a MessageEvent. Handle both shapes and log to confirm the path during Phase 0 bring-up.
+		// renderer -> Rust: forward the renderer's 8-byte-header frame ([reqId][length][payload])
+		// unchanged. The renderer emits exactly one frame per postMessage and MessagePort
+		// preserves message boundaries, so no extra length-prefixing is needed on this leg.
 		port.on('message', (e: unknown) => {
-			const raw: unknown = (e && typeof e === 'object' && Object.hasOwn(e as object, 'data') && !(e instanceof Uint8Array) && !(e instanceof ArrayBuffer))
-				? (e as { data: unknown }).data
-				: e;
+			const raw = unwrapPortMessage(e);
 			const data: Uint8Array = raw instanceof ArrayBuffer ? new Uint8Array(raw) : raw as Uint8Array;
 			if (!data || data.byteLength === undefined) {
 				this._logService.trace(`[languageHost:${id}] relay: received non-buffer message`, e);
 				return;
 			}
 			this._logService.trace(`[languageHost:${id}] relay: received ${data.byteLength} bytes from renderer`);
-			const header = Buffer.alloc(LanguageHostServerService._frameHeaderBytes);
-			header.writeUInt32LE(data.byteLength, 0);
-			childProcess.stdin?.write(header);
 			childProcess.stdin?.write(Buffer.from(data.buffer, data.byteOffset, data.byteLength));
 		});
 		port.start();
 
 		childProcess.stdin?.on('error', err => this._logService.error(`[languageHost:${id}] stdin error`, err));
 
-		// Rust -> renderer: parse length-prefixed frames and forward each payload.
+		// Rust -> renderer: reassemble [reqId(4)][length(4)][payload] frames from the stdout
+		// stream and forward each whole frame. Forwarding the header (not just the payload)
+		// lets the renderer's multiplexer read reqId + payload in a single message.
 		let readBuffer = Buffer.alloc(0);
 		childProcess.stdout?.on('data', (chunk: Buffer) => {
-			this._logService.trace(`[languageHost:${id}] stdout: ${chunk.length} bytes`);
 			readBuffer = Buffer.concat([readBuffer, chunk]);
 			while (readBuffer.length >= LanguageHostServerService._frameHeaderBytes) {
-				const length = readBuffer.readUInt32LE(0);
+				const length = readBuffer.readUInt32LE(4); // skip request_id at [0..4]
 				if (length === 0 || readBuffer.length < LanguageHostServerService._frameHeaderBytes + length) {
 					break; // incomplete frame, wait for more
 				}
-				const payload = readBuffer.subarray(
-					LanguageHostServerService._frameHeaderBytes,
+				const frame = readBuffer.subarray(
+					0,
 					LanguageHostServerService._frameHeaderBytes + length
 				);
 				// Copy into a standalone Uint8Array so it survives the next concat/subarray.
-				port.postMessage(Uint8Array.from(payload));
+				port.postMessage(Uint8Array.from(frame));
 				readBuffer = readBuffer.subarray(LanguageHostServerService._frameHeaderBytes + length);
 			}
 		});
