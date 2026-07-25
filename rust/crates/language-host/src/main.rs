@@ -1,4 +1,4 @@
-// Coderm Language Host (Phase 2: hover + Phase 1.5 robustness).
+// Coderm Language Host (Phase 3: definition + Phase 2 hover + Phase 1.5 robustness).
 //
 // Wire format: [4 bytes LE request_id][4 bytes LE length][payload(JSON)].
 //   request_id == 0  → notification (no response). Used for document sync.
@@ -10,6 +10,10 @@
 //   - documentSymbol:   {type:"documentSymbol",   uri}  → [DocumentSymbol]
 //   - foldingRange:     {type:"foldingRange",     uri}  → [FoldingRange]
 //   - hover:            {type:"hover",            uri, line, column} → HoverResponse | null
+//   - definition:       {type:"definition",       uri, line, column} → DefinitionResponse | null
+//
+// Phase 3 additions:
+//   - definition: file-local symbol resolution (find all declarations matching the identifier name)
 //
 // Phase 2 additions:
 //   - hover: function/method/class/interface/type/typed-variable signatures with JSDoc
@@ -18,7 +22,7 @@
 // Caution: tree-sitter positions are 0-indexed byte offsets; VS Code positions are
 // 1-indexed. Phase 1 documentSymbol/foldingRange convert with byte-column + 1 (drifts on
 // non-ASCII selectionRange columns — TODO retained). Phase 2 reconciles UTF-8 byte offsets
-// to UTF-16 code units for hover only, since hover receives a renderer (line, column).
+// to UTF-16 code units for hover/definition only, since they receive a renderer (line, column).
 
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -57,6 +61,8 @@ enum Message {
     // line/column are the renderer's Position (1-indexed; column is UTF-16 code units).
     #[serde(rename = "hover")]
     Hover { uri: String, line: u32, column: u32 },
+    #[serde(rename = "definition")]
+    Definition { uri: String, line: u32, column: u32 },
 }
 
 struct Document {
@@ -99,6 +105,21 @@ struct HoverResponse {
     signature: String,
     documentation: String,
     range: Range, // name-token range, so the highlight matches the hovered identifier
+}
+
+// Phase 3 definition response: a list of locations where the symbol is declared.
+// File-local only: all Locations share the same uri (the current document).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DefinitionResponse {
+    locations: Vec<Location>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Location {
+    uri: String,
+    range: Range,
 }
 
 struct LanguageHost {
@@ -167,33 +188,52 @@ impl LanguageHost {
                 ))
             }
             Message::Hover { uri, line, column } => Ok(Some(self.hover_json(&uri, line, column))),
+            Message::Definition { uri, line, column } => {
+                Ok(Some(self.definition_json(&uri, line, column)))
+            }
         }
     }
 
-    // Hover always emits a JSON string: the serialized response on success, or "null" on
-    // any failure. Why not bubble up via `?`: document() / hover_at_position() /
-    // to_string() errors must resolve to "null" here, not bubble to the main loop's
-    // generic `b"[]"` fallback — `[]` is a valid DocumentSymbol/FoldingRange shape but
-    // breaks hover (the renderer would build a "```typescript undefined```" tooltip).
-    fn hover_json(&self, uri: &str, line: u32, column: u32) -> String {
+    // Always emits a JSON string: the serialized response on success, or "null" on any
+    // failure. Why not bubble up via `?`: document() / compute() / to_string() errors must
+    // all resolve to "null" here, not bubble to the main loop's generic `b"[]"` fallback —
+    // `[]` is a valid DocumentSymbol/FoldingRange shape but breaks hover/definition (the
+    // renderer would build a "```typescript undefined```" tooltip or an empty Location[]).
+    fn feature_json<T, F>(&self, uri: &str, label: &str, compute: F) -> String
+    where
+        F: FnOnce(&Document) -> Result<Option<T>, String>,
+        T: Serialize,
+    {
         let doc = match self.document(uri) {
             Ok(doc) => doc,
             Err(e) => {
-                eprintln!("[languageHost] hover error (unknown uri): {}", e);
+                eprintln!("[languageHost] {} error (unknown uri): {}", label, e);
                 return "null".to_string();
             }
         };
-        match hover_at_position(&doc.language_id, &doc.content, line, column) {
+        match compute(doc) {
             Ok(Some(response)) => serde_json::to_string(&response).unwrap_or_else(|e| {
-                eprintln!("[languageHost] hover serialization error: {}", e);
+                eprintln!("[languageHost] {} serialization error: {}", label, e);
                 "null".to_string()
             }),
             Ok(None) => "null".to_string(),
             Err(e) => {
-                eprintln!("[languageHost] hover error: {}", e);
+                eprintln!("[languageHost] {} error: {}", label, e);
                 "null".to_string()
             }
         }
+    }
+
+    fn hover_json(&self, uri: &str, line: u32, column: u32) -> String {
+        self.feature_json(uri, "hover", |doc| {
+            hover_at_position(&doc.language_id, &doc.content, line, column)
+        })
+    }
+
+    fn definition_json(&self, uri: &str, line: u32, column: u32) -> String {
+        self.feature_json(uri, "definition", |doc| {
+            definition_at_position(&doc.language_id, &doc.content, uri, line, column)
+        })
     }
 }
 
@@ -491,6 +531,123 @@ fn strip_jsdoc(combined: &str) -> String {
         .filter(|l| !l.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+// Phase 3: definition provider. Returns all declaration locations matching the identifier
+// at the given position. File-local only: all locations share the same uri.
+fn definition_at_position(
+    language_id: &str,
+    content: &str,
+    uri: &str,
+    line_1: u32,
+    column_1: u32,
+) -> Result<Option<DefinitionResponse>, String> {
+    let tree = parse_source(language_id, content)?;
+    let row_0 = line_1.saturating_sub(1) as usize;
+    let column_0_utf8 = utf16_column_to_utf8_byte(content, row_0, column_1)?;
+    let point = Point {
+        row: row_0,
+        column: column_0_utf8,
+    };
+
+    // Get the identifier at the cursor position.
+    let leaf = match tree
+        .root_node()
+        .named_descendant_for_point_range(point, point)
+    {
+        Some(n) => n,
+        None => return Ok(None),
+    };
+
+    // Only trigger on identifier-like nodes (matches TS behavior).
+    if !is_definition_trigger_kind(leaf.kind()) {
+        return Ok(None);
+    }
+
+    let identifier_text = node_text(leaf, content);
+
+    // Scan the entire document for declarations whose name token matches.
+    // Caution: name-based, not scope-aware — returns every same-named declaration in the file
+    // (no shadowing/overload filtering), since Phase 3 is file-local only.
+    let mut locations = Vec::new();
+    collect_definition_locations(
+        tree.root_node(),
+        content,
+        uri,
+        identifier_text,
+        &mut locations,
+    );
+
+    if locations.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(DefinitionResponse { locations }))
+    }
+}
+
+// Why recursive named-child walk (not TreeCursor siblings): declarations nest arbitrarily
+// (methods inside classes, functions inside blocks), so we descend into named children the
+// same way collect_symbols does — a single TreeCursor.goto_next() loop only visits siblings
+// of one node and would miss nested declarations.
+fn collect_definition_locations(
+    node: Node,
+    source: &str,
+    uri: &str,
+    identifier: &str,
+    out: &mut Vec<Location>,
+) {
+    if is_definition_declaration_kind(node.kind()) {
+        if let Some(name_node) = node.child_by_field_name("name") {
+            if node_text(name_node, source) == identifier {
+                out.push(Location {
+                    uri: uri.to_string(),
+                    range: range_from_points(name_node.start_position(), name_node.end_position()),
+                });
+            }
+        }
+    }
+    let count = node.named_child_count();
+    for i in 0..count {
+        if let Some(child) = node.named_child(i) {
+            collect_definition_locations(child, source, uri, identifier, out);
+        }
+    }
+}
+
+// Definition triggers on identifier references (variable_name, property_identifier, etc.).
+fn is_definition_trigger_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "identifier"
+            | "property_identifier"
+            | "variable_name"
+            | "type_identifier"
+            | "shorthand_property_identifier"
+            | "shorthand_property_identifier_pattern"
+    )
+}
+
+// Definition searches any declaration with a `name` field. Wider than hover: also includes
+// enum_declaration. Note: lexical_declaration is intentionally absent — it has no `name`
+// field, and the recursive walk in collect_definition_locations still reaches its
+// variable_declarator children (which do carry the name).
+fn is_definition_declaration_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "function_declaration"
+            | "generator_function_declaration"
+            | "function_signature"
+            | "method_definition"
+            | "method_signature"
+            | "abstract_method_signature"
+            | "class_declaration"
+            | "abstract_class_declaration"
+            | "interface_declaration"
+            | "enum_declaration"
+            | "type_alias_declaration"
+            | "variable_declarator"
+            | "public_field_definition"
+    )
 }
 
 // Emits one [reqId(4)][length(4)][payload] frame to stdout.

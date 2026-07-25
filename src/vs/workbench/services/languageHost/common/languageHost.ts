@@ -49,6 +49,12 @@ export interface ILanguageHostService {
 	 * Returns the host's JSON string (a Hover shape or null).
 	 */
 	requestHover(uri: string, line: number, column: number): Promise<string>;
+
+	/**
+	 * Request definition information for a position in a synced document.
+	 * Returns the host's JSON string (a DefinitionResponse shape or null).
+	 */
+	requestDefinition(uri: string, line: number, column: number): Promise<string>;
 }
 
 // --- Coderm end ---
