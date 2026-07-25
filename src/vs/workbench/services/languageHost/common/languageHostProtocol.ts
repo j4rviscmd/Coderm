@@ -31,7 +31,11 @@ export class LanguageHostProtocol {
 
 	constructor(private readonly port: MessagePort) {
 		port.onmessage = (e: MessageEvent) => this.onMessage(e.data);
+		port.onmessageerror = (e: MessageEvent) => this.onMessageError(e);
 		port.start();
+
+		// Phase 1.5: reject all pending requests when the port closes
+		port.addEventListener('close', () => this.onPortClose());
 	}
 
 	private onMessage(data: unknown): void {
@@ -63,6 +67,19 @@ export class LanguageHostProtocol {
 			// request already timed out and the timer above cleared the pending entry.
 			console.warn(`[LanguageHostProtocol] received response for unknown request_id ${requestId}`);
 		}
+	}
+
+	private onMessageError(e: MessageEvent): void {
+		console.error('[LanguageHostProtocol] message error', e);
+	}
+
+	private onPortClose(): void {
+		// Phase 1.5: reject all pending requests when the port closes
+		for (const pending of this.pending.values()) {
+			clearTimeout(pending.timer);
+			pending.reject(new Error('Language Host port closed'));
+		}
+		this.pending.clear();
 	}
 
 	// Fire-and-forget: reqId=0, no response expected.

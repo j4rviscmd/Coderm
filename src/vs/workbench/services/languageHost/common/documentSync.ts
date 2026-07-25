@@ -10,7 +10,7 @@
 // sidesteps an incremental range-merge engine at the cost of re-sending the buffer.
 
 import { ITextModel } from '../../../../editor/common/model.js';
-import { IDisposable } from '../../../../base/common/lifecycle.js';
+import { IDisposable, combinedDisposable } from '../../../../base/common/lifecycle.js';
 
 export type DocumentSyncMessage =
 	| { type: 'document/open'; uri: string; version: number; languageId: string; text: string }
@@ -36,16 +36,19 @@ export class DocumentSyncManager {
 			return; // already syncing
 		}
 
-		this.sendMessage({
-			type: 'document/open',
-			uri,
-			version: model.getVersionId(),
-			languageId: model.getLanguageId(),
-			text: model.getValue(),
+		this.sendOpen(model, uri);
+
+		// Phase 1.5: watch for language changes and re-sync if needed
+		const languageDisposable = model.onDidChangeLanguage(() => {
+			if (this.isLanguageEnabled(model.getLanguageId())) {
+				this.sendOpen(model, uri);
+			} else {
+				this.unsyncDocument(uri);
+			}
 		});
 
 		// TODO(Phase 2): debounce rapid edits. Phase 1 forwards each change immediately.
-		const disposable = model.onDidChangeContent(() => {
+		const contentDisposable = model.onDidChangeContent(() => {
 			this.sendMessage({
 				type: 'document/change',
 				uri,
@@ -54,8 +57,19 @@ export class DocumentSyncManager {
 			});
 		});
 
+		this.disposables.set(uri, combinedDisposable(languageDisposable, contentDisposable));
+
 		this.syncedDocuments.set(uri, model);
-		this.disposables.set(uri, disposable);
+	}
+
+	private sendOpen(model: ITextModel, uri: string): void {
+		this.sendMessage({
+			type: 'document/open',
+			uri,
+			version: model.getVersionId(),
+			languageId: model.getLanguageId(),
+			text: model.getValue(),
+		});
 	}
 
 	unsyncDocument(uri: string): void {
