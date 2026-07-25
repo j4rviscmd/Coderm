@@ -107,6 +107,10 @@ export class NativeLanguageHostService extends Disposable implements ILanguageHo
 		return this.requestFeature({ type: 'hover', uri, line, column });
 	}
 
+	async requestDefinition(uri: string, line: number, column: number): Promise<string> {
+		return this.requestFeature({ type: 'definition', uri, line, column });
+	}
+
 	private async requestFeature(message: { type: string; uri: string; line?: number; column?: number }): Promise<string> {
 		if (!this.protocol) {
 			throw new Error('Language Host not ready');

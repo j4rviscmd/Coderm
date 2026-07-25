@@ -10,9 +10,13 @@
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { combinedDisposable, IDisposable } from '../../../../base/common/lifecycle.js';
 import { ITextModel } from '../../../../editor/common/model.js';
+import { URI } from '../../../../base/common/uri.js';
 import {
 	DocumentSymbol,
 	DocumentSymbolProvider,
+	Definition,
+	DefinitionProvider,
+	Location,
 	FoldingContext,
 	FoldingRange,
 	FoldingRangeProvider,
@@ -43,6 +47,10 @@ interface HoverResponse {
 	signature: string;
 	documentation: string;
 	range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
+}
+
+interface DefinitionResponse {
+	locations: Array<{ uri: string; range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number } }>;
 }
 
 class CodermDocumentSymbolProvider implements DocumentSymbolProvider {
@@ -106,6 +114,29 @@ class CodermHoverProvider implements HoverProvider {
 	}
 }
 
+class CodermDefinitionProvider implements DefinitionProvider {
+	readonly displayName = 'Coderm Language Host';
+
+	constructor(private readonly languageHostService: ILanguageHostService) { }
+
+	async provideDefinition(model: ITextModel, position: Position, token: CancellationToken): Promise<Definition | undefined> {
+		if (token.isCancellationRequested) {
+			return undefined;
+		}
+		try {
+			const json = await this.languageHostService.requestDefinition(
+				model.uri.toString(),
+				position.lineNumber,
+				position.column
+			);
+			return parseDefinition(json);
+		} catch (err) {
+			console.error('[CodermDefinitionProvider] request failed', err);
+			return undefined;
+		}
+	}
+}
+
 // Parses a JSON array from the host's response. Returns [] on parse failure or a
 // non-array payload — a malformed host reply should not crash the provider.
 function parseJsonArray<T>(json: string): T[] {
@@ -145,11 +176,11 @@ function parseFoldingRanges(json: string): FoldingRange[] {
 	return parseJsonArray<FoldingRangeResponse>(json).map((r): FoldingRange => ({ start: r.start, end: r.end }));
 }
 
-function parseHover(json: string): Hover | undefined {
-	// Note: the host's hover "no result" sentinel is the literal string "null" (hover_json in
-	// rust/crates/language-host/src/main.rs), unlike documentSymbol/foldingRange which fall back
-	// to "[]". Treat both "null" and empty as no-hover so a null reply never renders as a
-	// "```typescript undefined```" tooltip.
+// Note: the host's "no result" sentinel for hover/definition is the literal string "null"
+// (see hover_json/definition_json in rust/crates/language-host/src/main.rs), unlike
+// documentSymbol/foldingRange which fall back to "[]". Treat both "null" and empty as
+// no-result so a null reply never renders as a "```typescript undefined```" tooltip.
+function parseJsonObject<T extends object>(json: string): T | undefined {
 	if (json === 'null' || json === '') {
 		return undefined;
 	}
@@ -162,7 +193,14 @@ function parseHover(json: string): Hover | undefined {
 	if (!raw || typeof raw !== 'object') {
 		return undefined;
 	}
-	const response = raw as HoverResponse;
+	return raw as T;
+}
+
+function parseHover(json: string): Hover | undefined {
+	const response = parseJsonObject<HoverResponse>(json);
+	if (!response) {
+		return undefined;
+	}
 	// Wrap signature in a ```typescript code block; render JSDoc as a second markdown string.
 	// Why renderer-side shaping: keeps markdown construction out of Rust and matches the
 	// built-in TS hover (appendCodeblock + documentation markdown).
@@ -175,6 +213,17 @@ function parseHover(json: string): Hover | undefined {
 	return { contents, range: response.range };
 }
 
+function parseDefinition(json: string): Definition | undefined {
+	const response = parseJsonObject<DefinitionResponse>(json);
+	if (!response) {
+		return undefined;
+	}
+	return response.locations.map((loc): Location => ({
+		uri: URI.parse(loc.uri),
+		range: loc.range,
+	}));
+}
+
 export function registerLanguageFeatureProviders(
 	languageHostService: ILanguageHostService,
 	languages: string[],
@@ -183,6 +232,7 @@ export function registerLanguageFeatureProviders(
 	const documentSymbolProvider = new CodermDocumentSymbolProvider(languageHostService);
 	const foldingRangeProvider = new CodermFoldingRangeProvider(languageHostService);
 	const hoverProvider = new CodermHoverProvider(languageHostService);
+	const definitionProvider = new CodermDefinitionProvider(languageHostService);
 
 	// Why a flat string[] selector: each entry is a language id; VS Code invokes the provider
 	// only for models whose language matches, so no extra in-provider filtering is needed.
@@ -190,5 +240,6 @@ export function registerLanguageFeatureProviders(
 		languageFeaturesService.documentSymbolProvider.register(languages, documentSymbolProvider),
 		languageFeaturesService.foldingRangeProvider.register(languages, foldingRangeProvider),
 		languageFeaturesService.hoverProvider.register(languages, hoverProvider),
+		languageFeaturesService.definitionProvider.register(languages, definitionProvider),
 	);
 }
