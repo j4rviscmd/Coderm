@@ -61,6 +61,12 @@ export interface ILanguageHostService {
 	 * Returns the host's JSON string (a DefinitionResponse shape or null).
 	 */
 	requestReferences(uri: string, line: number, column: number, includeDeclaration: boolean): Promise<string>;
+
+	/**
+	 * Request document highlights for a position in a synced document.
+	 * Returns the host's JSON string (a DocumentHighlightsResponse shape or null).
+	 */
+	requestDocumentHighlights(uri: string, line: number, column: number): Promise<string>;
 }
 
 // --- Coderm end ---
