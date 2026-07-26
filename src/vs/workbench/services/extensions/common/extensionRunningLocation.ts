@@ -48,4 +48,24 @@ export class RemoteRunningLocation {
 	}
 }
 
-export type ExtensionRunningLocation = LocalProcessRunningLocation | LocalWebWorkerRunningLocation | RemoteRunningLocation;
+// --- Coderm start: isolated language EH kind ---
+export class LocalIsolatedProcessRunningLocation {
+	public readonly kind = ExtensionHostKind.LocalIsolatedProcess;
+	constructor(
+		public readonly affinity: number
+	) { }
+	public equals(other: ExtensionRunningLocation) {
+		return (this.kind === other.kind && this.affinity === other.affinity);
+	}
+	public asString(): string {
+		if (this.affinity === 0) {
+			return 'LocalIsolatedProcess';
+		}
+		return `LocalIsolatedProcess${this.affinity}`;
+	}
+}
+// --- Coderm end ---
+
+// --- Coderm start: isolated language EH kind ---
+export type ExtensionRunningLocation = LocalProcessRunningLocation | LocalWebWorkerRunningLocation | RemoteRunningLocation | LocalIsolatedProcessRunningLocation;
+// --- Coderm end ---

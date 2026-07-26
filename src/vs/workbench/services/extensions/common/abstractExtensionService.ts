@@ -43,7 +43,9 @@ import { ExtensionHostManager } from './extensionHostManager.js';
 import { IExtensionHostManager } from './extensionHostManagers.js';
 import { IResolveAuthorityErrorResult } from './extensionHostProxy.js';
 import { IExtensionManifestPropertiesService } from './extensionManifestPropertiesService.js';
-import { ExtensionRunningLocation, LocalProcessRunningLocation, LocalWebWorkerRunningLocation, RemoteRunningLocation } from './extensionRunningLocation.js';
+// --- Coderm start: isolated language EH kind ---
+import { ExtensionRunningLocation, LocalIsolatedProcessRunningLocation, LocalProcessRunningLocation, LocalWebWorkerRunningLocation, RemoteRunningLocation } from './extensionRunningLocation.js';
+// --- Coderm end ---
 import { ExtensionRunningLocationTracker, filterExtensionIdentifiers } from './extensionRunningLocationTracker.js';
 import { ActivationKind, ActivationTimes, ExtensionActivationReason, ExtensionHostStartup, ExtensionPointContribution, IExtensionHost, IExtensionInspectInfo, IExtensionService, IExtensionsStatus, IInternalExtensionService, IMessage, IResponsiveStateChangeEvent, IWillActivateEvent, WillStopExtensionHostsEvent, toExtension, toExtensionDescription } from './extensions.js';
 import { ExtensionsProposedApi } from './extensionsProposedApi.js';
@@ -825,6 +827,15 @@ export abstract class AbstractExtensionService extends Disposable implements IEx
 		for (let affinity = 0; affinity <= this._runningLocations.maxLocalWebWorkerAffinity; affinity++) {
 			locations.push(new LocalWebWorkerRunningLocation(affinity));
 		}
+		// --- Coderm start: isolated language EH kind ---
+		// Only spawn an isolated EH when at least one extension is routed to it.
+		// Without this guard the default (feature off) would still launch a process.
+		if (this._runningLocations.hasLocalIsolatedProcessExtensions()) {
+			for (let affinity = 0; affinity <= this._runningLocations.maxLocalIsolatedProcessAffinity; affinity++) {
+				locations.push(new LocalIsolatedProcessRunningLocation(affinity));
+			}
+		}
+		// --- Coderm end ---
 		locations.push(new RemoteRunningLocation());
 		for (const location of locations) {
 			if (this._extensionHostManagers.getByRunningLocation(location)) {
@@ -891,6 +902,14 @@ export abstract class AbstractExtensionService extends Disposable implements IEx
 			}
 			this._extensionHostManagers.stopOne(extensionHost);
 		}
+		// --- Coderm start: isolated language EH kind ---
+		else if (extensionHost.kind === ExtensionHostKind.LocalIsolatedProcess) {
+			// Isolate the blast radius: stop only the crashed host and leave the
+			// main/local process extension host untouched. Restart decisions are
+			// handled by the NativeExtensionService override below.
+			this._extensionHostManagers.stopOne(extensionHost);
+		}
+		// --- Coderm end ---
 	}
 
 	private _getExtensionHostExitInfoWithTimeout(reconnectionToken: string): Promise<IExtensionHostExitInfo | null> {
