@@ -1,4 +1,4 @@
-// Coderm Language Host (Phase 3: definition + Phase 2 hover + Phase 1.5 robustness).
+// Coderm Language Host (Phase 4: references + Phase 3: definition + Phase 2 hover + Phase 1.5 robustness).
 //
 // Wire format: [4 bytes LE request_id][4 bytes LE length][payload(JSON)].
 //   request_id == 0  → notification (no response). Used for document sync.
@@ -11,6 +11,10 @@
 //   - foldingRange:     {type:"foldingRange",     uri}  → [FoldingRange]
 //   - hover:            {type:"hover",            uri, line, column} → HoverResponse | null
 //   - definition:       {type:"definition",       uri, line, column} → DefinitionResponse | null
+//   - references:       {type:"references",       uri, line, column, includeDeclaration} → DefinitionResponse | null
+//
+// Phase 4 additions:
+//   - references: file-local symbol references (find all references matching the identifier name)
 //
 // Phase 3 additions:
 //   - definition: file-local symbol resolution (find all declarations matching the identifier name)
@@ -63,6 +67,13 @@ enum Message {
     Hover { uri: String, line: u32, column: u32 },
     #[serde(rename = "definition")]
     Definition { uri: String, line: u32, column: u32 },
+    #[serde(rename = "references", rename_all = "camelCase")]
+    References {
+        uri: String,
+        line: u32,
+        column: u32,
+        include_declaration: bool,
+    },
 }
 
 struct Document {
@@ -191,6 +202,17 @@ impl LanguageHost {
             Message::Definition { uri, line, column } => {
                 Ok(Some(self.definition_json(&uri, line, column)))
             }
+            Message::References {
+                uri,
+                line,
+                column,
+                include_declaration,
+            } => Ok(Some(self.references_json(
+                &uri,
+                line,
+                column,
+                include_declaration,
+            ))),
         }
     }
 
@@ -233,6 +255,25 @@ impl LanguageHost {
     fn definition_json(&self, uri: &str, line: u32, column: u32) -> String {
         self.feature_json(uri, "definition", |doc| {
             definition_at_position(&doc.language_id, &doc.content, uri, line, column)
+        })
+    }
+
+    fn references_json(
+        &self,
+        uri: &str,
+        line: u32,
+        column: u32,
+        include_declaration: bool,
+    ) -> String {
+        self.feature_json(uri, "references", |doc| {
+            references_at_position(
+                &doc.language_id,
+                &doc.content,
+                uri,
+                line,
+                column,
+                include_declaration,
+            )
         })
     }
 }
@@ -533,15 +574,19 @@ fn strip_jsdoc(combined: &str) -> String {
         .join("\n")
 }
 
-// Phase 3: definition provider. Returns all declaration locations matching the identifier
-// at the given position. File-local only: all locations share the same uri.
-fn definition_at_position(
+// Resolves the renderer's (line_1, column_1) to the identifier text under the cursor and
+// returns the parsed tree so the caller can walk it. Returns None when the point is not on
+// an identifier-like node. Shared front-end for definition (Phase 3) and references (Phase 4).
+//
+// Why the Tree is returned (not re-parsed inside each caller): walking the tree for matches
+// is the caller's job, and re-parsing would double the parse cost per request. The returned
+// &str borrows from `content` (not from the Tree), so the Tree can be moved out freely.
+fn find_identifier_at_position<'a>(
     language_id: &str,
-    content: &str,
-    uri: &str,
+    content: &'a str,
     line_1: u32,
     column_1: u32,
-) -> Result<Option<DefinitionResponse>, String> {
+) -> Result<Option<(tree_sitter::Tree, &'a str)>, String> {
     let tree = parse_source(language_id, content)?;
     let row_0 = line_1.saturating_sub(1) as usize;
     let column_0_utf8 = utf16_column_to_utf8_byte(content, row_0, column_1)?;
@@ -564,17 +609,66 @@ fn definition_at_position(
         return Ok(None);
     }
 
-    let identifier_text = node_text(leaf, content);
+    // Bind the identifier first so NLL can see `leaf`'s borrow of `tree` ends before `tree`
+    // is moved into the return tuple. The slice borrows from `content` (not the Tree).
+    let identifier = node_text(leaf, content);
+    Ok(Some((tree, identifier)))
+}
+
+// Phase 3: definition provider. Returns all declaration locations matching the identifier
+// at the given position. File-local only: all locations share the same uri.
+fn definition_at_position(
+    language_id: &str,
+    content: &str,
+    uri: &str,
+    line_1: u32,
+    column_1: u32,
+) -> Result<Option<DefinitionResponse>, String> {
+    let (tree, identifier) =
+        match find_identifier_at_position(language_id, content, line_1, column_1)? {
+            Some(v) => v,
+            None => return Ok(None),
+        };
 
     // Scan the entire document for declarations whose name token matches.
     // Caution: name-based, not scope-aware — returns every same-named declaration in the file
     // (no shadowing/overload filtering), since Phase 3 is file-local only.
     let mut locations = Vec::new();
-    collect_definition_locations(
+    collect_definition_locations(tree.root_node(), content, uri, identifier, &mut locations);
+
+    if locations.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(DefinitionResponse { locations }))
+    }
+}
+
+// Phase 4: references provider. Returns all reference locations matching the identifier
+// at the given position. File-local only: all locations share the same uri.
+fn references_at_position(
+    language_id: &str,
+    content: &str,
+    uri: &str,
+    line_1: u32,
+    column_1: u32,
+    include_declaration: bool,
+) -> Result<Option<DefinitionResponse>, String> {
+    let (tree, identifier) =
+        match find_identifier_at_position(language_id, content, line_1, column_1)? {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+
+    // Collect references to the identifier throughout the entire document.
+    // Caution: name-based, not scope-aware — returns every same-named identifier in the file
+    // (no shadowing/overload filtering), since Phase 4 is file-local only.
+    let mut locations = Vec::new();
+    collect_reference_locations(
         tree.root_node(),
         content,
         uri,
-        identifier_text,
+        identifier,
+        include_declaration,
         &mut locations,
     );
 
@@ -585,7 +679,7 @@ fn definition_at_position(
     }
 }
 
-// Why recursive named-child walk (not TreeCursor siblings): declarations nest arbitrarily
+// Why recursive named-child walk (not TreeCursor siblings): references nest arbitrarily
 // (methods inside classes, functions inside blocks), so we descend into named children the
 // same way collect_symbols does — a single TreeCursor.goto_next() loop only visits siblings
 // of one node and would miss nested declarations.
@@ -648,6 +742,51 @@ fn is_definition_declaration_kind(kind: &str) -> bool {
             | "variable_declarator"
             | "public_field_definition"
     )
+}
+
+// Phase 4: collect all identifier references matching a given text.
+// Why recursive named-child walk (not TreeCursor siblings): references nest arbitrarily
+// (methods inside classes, functions inside blocks), so we descend into named children the
+// same way collect_symbols does — a single TreeCursor.goto_next() loop only visits siblings
+// of one node and would miss nested references.
+fn collect_reference_locations(
+    node: Node,
+    source: &str,
+    uri: &str,
+    identifier: &str,
+    include_declaration: bool,
+    out: &mut Vec<Location>,
+) {
+    // Collect identifier-like nodes whose text matches. When include_declaration is false,
+    // skip nodes that are the `name` field of a declaration (those are the declaration sites).
+    if is_definition_trigger_kind(node.kind())
+        && node_text(node, source) == identifier
+        && (include_declaration || !is_declaration_name(node))
+    {
+        out.push(Location {
+            uri: uri.to_string(),
+            range: range_from_points(node.start_position(), node.end_position()),
+        });
+    }
+    let count = node.named_child_count();
+    for i in 0..count {
+        if let Some(child) = node.named_child(i) {
+            collect_reference_locations(child, source, uri, identifier, include_declaration, out);
+        }
+    }
+}
+
+// Check if the node is a declaration name (parent is a declaration kind and this node is its "name" field).
+// Used to gate declaration inclusion in reference results when include_declaration is false.
+fn is_declaration_name(node: Node) -> bool {
+    if let Some(parent) = node.parent() {
+        if is_definition_declaration_kind(parent.kind()) {
+            if let Some(name_node) = parent.child_by_field_name("name") {
+                return node == name_node;
+            }
+        }
+    }
+    false
 }
 
 // Emits one [reqId(4)][length(4)][payload] frame to stdout.

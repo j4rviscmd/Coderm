@@ -22,6 +22,8 @@ import {
 	FoldingRangeProvider,
 	Hover,
 	HoverProvider,
+	ReferenceContext,
+	ReferenceProvider,
 	SymbolKind,
 } from '../../../../editor/common/languages.js';
 import { IMarkdownString, MarkdownString } from '../../../../base/common/htmlContent.js';
@@ -129,9 +131,33 @@ class CodermDefinitionProvider implements DefinitionProvider {
 				position.lineNumber,
 				position.column
 			);
-			return parseDefinition(json);
+			return parseLocations(json);
 		} catch (err) {
 			console.error('[CodermDefinitionProvider] request failed', err);
+			return undefined;
+		}
+	}
+}
+
+class CodermReferenceProvider implements ReferenceProvider {
+	readonly displayName = 'Coderm Language Host';
+
+	constructor(private readonly languageHostService: ILanguageHostService) { }
+
+	async provideReferences(model: ITextModel, position: Position, context: ReferenceContext, token: CancellationToken): Promise<Location[] | undefined> {
+		if (token.isCancellationRequested) {
+			return undefined;
+		}
+		try {
+			const json = await this.languageHostService.requestReferences(
+				model.uri.toString(),
+				position.lineNumber,
+				position.column,
+				context.includeDeclaration
+			);
+			return parseLocations(json);
+		} catch (err) {
+			console.error('[CodermReferenceProvider] request failed', err);
 			return undefined;
 		}
 	}
@@ -213,7 +239,9 @@ function parseHover(json: string): Hover | undefined {
 	return { contents, range: response.range };
 }
 
-function parseDefinition(json: string): Definition | undefined {
+// Definition and references share the same wire shape (a DefinitionResponse with a
+// `locations` array), so one parser covers both. Returns Location[] — also a valid Definition.
+function parseLocations(json: string): Location[] | undefined {
 	const response = parseJsonObject<DefinitionResponse>(json);
 	if (!response) {
 		return undefined;
@@ -233,6 +261,7 @@ export function registerLanguageFeatureProviders(
 	const foldingRangeProvider = new CodermFoldingRangeProvider(languageHostService);
 	const hoverProvider = new CodermHoverProvider(languageHostService);
 	const definitionProvider = new CodermDefinitionProvider(languageHostService);
+	const referenceProvider = new CodermReferenceProvider(languageHostService);
 
 	// Why a flat string[] selector: each entry is a language id; VS Code invokes the provider
 	// only for models whose language matches, so no extra in-provider filtering is needed.
@@ -241,5 +270,6 @@ export function registerLanguageFeatureProviders(
 		languageFeaturesService.foldingRangeProvider.register(languages, foldingRangeProvider),
 		languageFeaturesService.hoverProvider.register(languages, hoverProvider),
 		languageFeaturesService.definitionProvider.register(languages, definitionProvider),
+		languageFeaturesService.referenceProvider.register(languages, referenceProvider),
 	);
 }
