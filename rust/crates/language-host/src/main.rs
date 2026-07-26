@@ -1,17 +1,21 @@
-// Coderm Language Host (Phase 4: references + Phase 3: definition + Phase 2 hover + Phase 1.5 robustness).
+// Coderm Language Host (Phase 5: document highlights + Phase 4: references + Phase 3: definition + Phase 2 hover + Phase 1.5 robustness).
 //
 // Wire format: [4 bytes LE request_id][4 bytes LE length][payload(JSON)].
 //   request_id == 0  → notification (no response). Used for document sync.
 //   request_id  > 0  → request (response expected). Used for language features.
 // Payload is JSON tagged by "type":
-//   - document/open:    {type:"document/open",    uri, version, languageId, text}
-//   - document/change:  {type:"document/change",  uri, version, text}      // full-text replace
-//   - document/close:   {type:"document/close",   uri}
-//   - documentSymbol:   {type:"documentSymbol",   uri}  → [DocumentSymbol]
-//   - foldingRange:     {type:"foldingRange",     uri}  → [FoldingRange]
-//   - hover:            {type:"hover",            uri, line, column} → HoverResponse | null
-//   - definition:       {type:"definition",       uri, line, column} → DefinitionResponse | null
-//   - references:       {type:"references",       uri, line, column, includeDeclaration} → DefinitionResponse | null
+//   - document/open:      {type:"document/open",      uri, version, languageId, text}
+//   - document/change:    {type:"document/change",    uri, version, text}      // full-text replace
+//   - document/close:     {type:"document/close",     uri}
+//   - documentSymbol:     {type:"documentSymbol",     uri}  → [DocumentSymbol]
+//   - foldingRange:       {type:"foldingRange",       uri}  → [FoldingRange]
+//   - hover:              {type:"hover",              uri, line, column} → HoverResponse | null
+//   - definition:         {type:"definition",         uri, line, column} → DefinitionResponse | null
+//   - references:         {type:"references",         uri, line, column, includeDeclaration} → DefinitionResponse | null
+//   - documentHighlights: {type:"documentHighlights", uri, line, column} → DocumentHighlightsResponse | null
+//
+// Phase 5 additions:
+//   - documentHighlights: file-local identifier highlights (Write for declaration names, Read otherwise)
 //
 // Phase 4 additions:
 //   - references: file-local symbol references (find all references matching the identifier name)
@@ -74,6 +78,8 @@ enum Message {
         column: u32,
         include_declaration: bool,
     },
+    #[serde(rename = "documentHighlights", rename_all = "camelCase")]
+    DocumentHighlights { uri: String, line: u32, column: u32 },
 }
 
 struct Document {
@@ -131,6 +137,21 @@ struct DefinitionResponse {
 struct Location {
     uri: String,
     range: Range,
+}
+
+// Phase 5 document highlight response. `kind` mirrors VS Code's DocumentHighlightKind
+// (Text=0, Read=1, Write=2); Text is unused in v1.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentHighlightsResponse {
+    highlights: Vec<DocumentHighlightResponse>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentHighlightResponse {
+    range: Range,
+    kind: u32,
 }
 
 struct LanguageHost {
@@ -213,6 +234,9 @@ impl LanguageHost {
                 column,
                 include_declaration,
             ))),
+            Message::DocumentHighlights { uri, line, column } => {
+                Ok(Some(self.document_highlights_json(&uri, line, column)))
+            }
         }
     }
 
@@ -274,6 +298,12 @@ impl LanguageHost {
                 column,
                 include_declaration,
             )
+        })
+    }
+
+    fn document_highlights_json(&self, uri: &str, line: u32, column: u32) -> String {
+        self.feature_json(uri, "document highlights", |doc| {
+            document_highlights_at_position(&doc.language_id, &doc.content, line, column)
         })
     }
 }
@@ -409,12 +439,7 @@ fn hover_at_position(
     column_1: u32,
 ) -> Result<Option<HoverResponse>, String> {
     let tree = parse_source(language_id, content)?;
-    let row_0 = line_1.saturating_sub(1) as usize;
-    let column_0_utf8 = utf16_column_to_utf8_byte(content, row_0, column_1)?;
-    let point = Point {
-        row: row_0,
-        column: column_0_utf8,
-    };
+    let point = point_for_position(content, line_1, column_1)?;
 
     // Deepest named node at the point, then walk up to the enclosing declaration.
     let leaf = match tree
@@ -476,6 +501,18 @@ fn utf16_column_to_utf8_byte(content: &str, row_0: usize, column_1: u32) -> Resu
         byte_offset += c.len_utf8();
     }
     Ok(byte_offset)
+}
+
+// Resolve a renderer (line_1, column_1) Position to a tree-sitter Point. Wraps the
+// 1-indexed → 0-indexed row conversion and the UTF-16 → UTF-8 byte column reconciliation
+// performed by utf16_column_to_utf8_byte (see its comment for the per-row walk rationale).
+fn point_for_position(content: &str, line_1: u32, column_1: u32) -> Result<Point, String> {
+    let row_0 = line_1.saturating_sub(1) as usize;
+    let column_0_utf8 = utf16_column_to_utf8_byte(content, row_0, column_1)?;
+    Ok(Point {
+        row: row_0,
+        column: column_0_utf8,
+    })
 }
 
 fn walk_up_to_declaration<'a>(start: Node<'a>) -> Option<Node<'a>> {
@@ -588,12 +625,7 @@ fn find_identifier_at_position<'a>(
     column_1: u32,
 ) -> Result<Option<(tree_sitter::Tree, &'a str)>, String> {
     let tree = parse_source(language_id, content)?;
-    let row_0 = line_1.saturating_sub(1) as usize;
-    let column_0_utf8 = utf16_column_to_utf8_byte(content, row_0, column_1)?;
-    let point = Point {
-        row: row_0,
-        column: column_0_utf8,
-    };
+    let point = point_for_position(content, line_1, column_1)?;
 
     // Get the identifier at the cursor position.
     let leaf = match tree
@@ -787,6 +819,59 @@ fn is_declaration_name(node: Node) -> bool {
         }
     }
     false
+}
+
+// Phase 5: document highlights provider. Returns highlight ranges for all occurrences of the
+// identifier at the given position. File-local only. kind heuristic: declaration name →
+// Write(2), otherwise Read(1); Text(0) is unused in v1.
+fn document_highlights_at_position(
+    language_id: &str,
+    content: &str,
+    line_1: u32,
+    column_1: u32,
+) -> Result<Option<DocumentHighlightsResponse>, String> {
+    let (tree, identifier) =
+        match find_identifier_at_position(language_id, content, line_1, column_1)? {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+
+    // Caution: name-based, not scope-aware — highlights every same-named identifier in the file
+    // (shadowed locals too), since Phase 5 is file-local only.
+    let mut highlights = Vec::new();
+    collect_document_highlights(tree.root_node(), content, identifier, &mut highlights);
+
+    if highlights.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(DocumentHighlightsResponse { highlights }))
+    }
+}
+
+// Why recursive named-child walk: occurrences nest arbitrarily (methods inside classes,
+// references inside expressions), so we descend into named children like the other collect_*
+// helpers — a single goto_next() loop only visits one level of siblings.
+fn collect_document_highlights(
+    node: Node,
+    source: &str,
+    identifier: &str,
+    out: &mut Vec<DocumentHighlightResponse>,
+) {
+    if is_definition_trigger_kind(node.kind()) && node_text(node, source) == identifier {
+        // Declaration name (the identifier bound as a declaration's "name" field) is a Write
+        // site; every other occurrence is a Read.
+        let kind = if is_declaration_name(node) { 2 } else { 1 };
+        out.push(DocumentHighlightResponse {
+            range: range_from_points(node.start_position(), node.end_position()),
+            kind,
+        });
+    }
+    let count = node.named_child_count();
+    for i in 0..count {
+        if let Some(child) = node.named_child(i) {
+            collect_document_highlights(child, source, identifier, out);
+        }
+    }
 }
 
 // Emits one [reqId(4)][length(4)][payload] frame to stdout.

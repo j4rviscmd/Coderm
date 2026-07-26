@@ -24,19 +24,24 @@ import {
 	HoverProvider,
 	ReferenceContext,
 	ReferenceProvider,
+	DocumentHighlight,
+	DocumentHighlightKind,
+	DocumentHighlightProvider,
 	SymbolKind,
 } from '../../../../editor/common/languages.js';
 import { IMarkdownString, MarkdownString } from '../../../../base/common/htmlContent.js';
+import { IRange } from '../../../../editor/common/core/range.js';
 import { Position } from '../../../../editor/common/core/position.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
 import { ILanguageHostService } from './languageHost.js';
 
 // Shapes returned by the Rust host (camelCase, matching the renderer's DocumentSymbol/IRange).
+// `range` fields reuse the editor's IRange since the host emits the identical shape.
 interface DocumentSymbolResponse {
 	name: string;
 	kind: number;
-	range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
-	selectionRange: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
+	range: IRange;
+	selectionRange: IRange;
 	children?: DocumentSymbolResponse[];
 }
 
@@ -48,11 +53,15 @@ interface FoldingRangeResponse {
 interface HoverResponse {
 	signature: string;
 	documentation: string;
-	range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
+	range: IRange;
 }
 
 interface DefinitionResponse {
-	locations: Array<{ uri: string; range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number } }>;
+	locations: Array<{ uri: string; range: IRange }>;
+}
+
+interface DocumentHighlightsResponse {
+	highlights: Array<{ range: IRange; kind: number }>;
 }
 
 class CodermDocumentSymbolProvider implements DocumentSymbolProvider {
@@ -163,6 +172,29 @@ class CodermReferenceProvider implements ReferenceProvider {
 	}
 }
 
+class CodermDocumentHighlightProvider implements DocumentHighlightProvider {
+	readonly displayName = 'Coderm Language Host';
+
+	constructor(private readonly languageHostService: ILanguageHostService) { }
+
+	async provideDocumentHighlights(model: ITextModel, position: Position, token: CancellationToken): Promise<DocumentHighlight[] | undefined> {
+		if (token.isCancellationRequested) {
+			return undefined;
+		}
+		try {
+			const json = await this.languageHostService.requestDocumentHighlights(
+				model.uri.toString(),
+				position.lineNumber,
+				position.column
+			);
+			return parseDocumentHighlights(json);
+		} catch (err) {
+			console.error('[CodermDocumentHighlightProvider] request failed', err);
+			return undefined;
+		}
+	}
+}
+
 // Parses a JSON array from the host's response. Returns [] on parse failure or a
 // non-array payload — a malformed host reply should not crash the provider.
 function parseJsonArray<T>(json: string): T[] {
@@ -252,6 +284,19 @@ function parseLocations(json: string): Location[] | undefined {
 	}));
 }
 
+// Note: kind mirrors VS Code's DocumentHighlightKind (Text=0, Read=1, Write=2). The host sends
+// numbers directly (no enum on the wire), so a plain cast is sufficient.
+function parseDocumentHighlights(json: string): DocumentHighlight[] | undefined {
+	const response = parseJsonObject<DocumentHighlightsResponse>(json);
+	if (!response) {
+		return undefined;
+	}
+	return response.highlights.map((h): DocumentHighlight => ({
+		range: h.range,
+		kind: h.kind as DocumentHighlightKind,
+	}));
+}
+
 export function registerLanguageFeatureProviders(
 	languageHostService: ILanguageHostService,
 	languages: string[],
@@ -262,6 +307,7 @@ export function registerLanguageFeatureProviders(
 	const hoverProvider = new CodermHoverProvider(languageHostService);
 	const definitionProvider = new CodermDefinitionProvider(languageHostService);
 	const referenceProvider = new CodermReferenceProvider(languageHostService);
+	const documentHighlightProvider = new CodermDocumentHighlightProvider(languageHostService);
 
 	// Why a flat string[] selector: each entry is a language id; VS Code invokes the provider
 	// only for models whose language matches, so no extra in-provider filtering is needed.
@@ -271,5 +317,6 @@ export function registerLanguageFeatureProviders(
 		languageFeaturesService.hoverProvider.register(languages, hoverProvider),
 		languageFeaturesService.definitionProvider.register(languages, definitionProvider),
 		languageFeaturesService.referenceProvider.register(languages, referenceProvider),
+		languageFeaturesService.documentHighlightProvider.register(languages, documentHighlightProvider),
 	);
 }
