@@ -114,7 +114,9 @@ export class ExtensionHostStarter extends Disposable implements IDisposable, IEx
 		extHost.start({
 			...opts,
 			type: 'extensionHost',
-			name: 'extension-host',
+			// --- Coderm start: isolated language EH kind ---
+			name: opts.kind === 'isolatedExtensionHost' ? 'isolated-extension-host' : 'extension-host',
+			// --- Coderm end ---
 			entryPoint: 'vs/workbench/api/node/extensionHostProcess',
 			args,
 			execArgv: opts.execArgv,

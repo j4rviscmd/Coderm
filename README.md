@@ -82,6 +82,8 @@ Settings unique to Coderm that are not available in upstream VS Code.
 | `coderm.workbench.editor.disableGroupLock`        | `boolean`  | `true`                                           | Completely disable the editor group lock feature — groups can never be locked (automatically or manually) and always behave as unlocked |
 | `coderm.languageHost.enabled`                    | `boolean`  | `false`                                          | _(experimental)_ Enable the native (Rust) Language Host. Provides tree-sitter-backed documentSymbol, foldingRange, hover, definition, references, and document highlights for the configured languages (Phase 5) |
 | `coderm.languageHost.languages`                  | `array`    | `[]`                                             | _(experimental)_ Language IDs handled by the native host (e.g. "typescript", "tsx"). Empty keeps the feature inert |
+| `coderm.languageHost.isolatedEnabled`            | `boolean`  | `false`                                          | _(experimental)_ Run the extensions listed in `isolatedExtensions` inside a dedicated extension host process, isolated from the main local process extension host (Phase 6) |
+| `coderm.languageHost.isolatedExtensions`         | `array`    | `[]`                                             | _(experimental)_ Extension IDs to route into the isolated extension host when `isolatedEnabled` is true (Phase 6) |
 
 ---
 

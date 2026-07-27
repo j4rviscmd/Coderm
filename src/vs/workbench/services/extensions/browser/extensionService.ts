@@ -242,6 +242,13 @@ class BrowserExtensionHostFactory implements IExtensionHostFactory {
 			case ExtensionHostKind.LocalProcess: {
 				return null;
 			}
+			// --- Coderm start: isolated language EH kind ---
+			case ExtensionHostKind.LocalIsolatedProcess: {
+				// Isolated language EH is a desktop-only feature; the browser host
+				// never routes extensions to it.
+				return null;
+			}
+			// --- Coderm end ---
 			case ExtensionHostKind.LocalWebWorker: {
 				const startup = (
 					isInitialStart

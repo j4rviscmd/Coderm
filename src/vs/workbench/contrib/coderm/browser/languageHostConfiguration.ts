@@ -22,6 +22,10 @@ import { registerLanguageFeatureProviders } from '../../../services/languageHost
 
 export const CodermLanguageHostEnabledSetting = 'coderm.languageHost.enabled';
 
+// --- Coderm start: Phase 6 isolated EH settings ---
+export const CodermLanguageHostIsolatedEnabledSetting = 'coderm.languageHost.isolatedEnabled';
+// --- Coderm end ---
+
 Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).registerConfiguration({
 	id: 'coderm.languageHost',
 	order: 103,
@@ -47,6 +51,27 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 				"Language IDs handled by the native Language Host (e.g. \"typescript\", \"tsx\"). Empty (default) keeps the feature inert."),
 			items: { type: 'string' },
 		},
+		// --- Coderm start: Phase 6 isolated EH settings ---
+		[CodermLanguageHostIsolatedEnabledSetting]: {
+			// Note: default:false intentionally deviates from the project's "new settings
+			// default to enabled" convention (project CLAUDE.md, development rules). This
+			// spawns an additional extension host process for the listed extensions; keep
+			// it inert until Phase 6 is proven end-to-end.
+			type: 'boolean',
+			default: false,
+			scope: ConfigurationScope.APPLICATION,
+			description: localize('coderm.languageHost.isolatedEnabled',
+				"(experimental, Phase 6) Run the extensions listed in isolatedExtensions inside a dedicated extension host process, isolated from the main local process extension host."),
+		},
+		'coderm.languageHost.isolatedExtensions': {
+			type: 'array',
+			default: [],
+			scope: ConfigurationScope.APPLICATION,
+			description: localize('coderm.languageHost.isolatedExtensions',
+				"(experimental, Phase 6) Extension IDs to route into the isolated extension host when isolatedEnabled is true (e.g. [\"vscode.typescript-language-features\"])."),
+			items: { type: 'string' },
+		},
+		// --- Coderm end ---
 	},
 });
 

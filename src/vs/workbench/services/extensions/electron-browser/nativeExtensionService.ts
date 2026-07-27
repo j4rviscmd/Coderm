@@ -46,13 +46,18 @@ import { ExtensionHostKind, ExtensionRunningPreference, IExtensionHostKindPicker
 import { IExtensionHostManager } from '../common/extensionHostManagers.js';
 import { ExtensionHostExitCode } from '../common/extensionHostProtocol.js';
 import { IExtensionManifestPropertiesService } from '../common/extensionManifestPropertiesService.js';
-import { ExtensionRunningLocation, LocalProcessRunningLocation, LocalWebWorkerRunningLocation } from '../common/extensionRunningLocation.js';
+// --- Coderm start: isolated language EH kind ---
+import { ExtensionRunningLocation, LocalIsolatedProcessRunningLocation, LocalProcessRunningLocation, LocalWebWorkerRunningLocation } from '../common/extensionRunningLocation.js';
+// --- Coderm end ---
 import { ExtensionRunningLocationTracker, filterExtensionDescriptions } from '../common/extensionRunningLocationTracker.js';
 import { ExtensionHostExtensions, ExtensionHostStartup, IExtensionHost, IExtensionService, WebWorkerExtHostConfigValue, toExtension, webWorkerExtHostConfig } from '../common/extensions.js';
 import { ExtensionsProposedApi } from '../common/extensionsProposedApi.js';
 import { IRemoteExtensionHostDataProvider, IRemoteExtensionHostInitData, RemoteExtensionHost } from '../common/remoteExtensionHost.js';
 import { CachedExtensionScanner } from './cachedExtensionScanner.js';
 import { ILocalProcessExtensionHostDataProvider, ILocalProcessExtensionHostInitData, NativeLocalProcessExtensionHost } from './localProcessExtensionHost.js';
+// --- Coderm start: isolated language EH kind ---
+import { ILocalIsolatedProcessExtensionHostDataProvider, ILocalIsolatedProcessExtensionHostInitData, NativeLocalIsolatedProcessExtensionHost } from './localIsolatedProcessExtensionHost.js';
+// --- Coderm end ---
 import { IHostService } from '../../host/browser/host.js';
 import { ILifecycleService, LifecyclePhase } from '../../lifecycle/common/lifecycle.js';
 import { IRemoteAgentService } from '../../remote/common/remoteAgentService.js';
@@ -63,6 +68,9 @@ export class NativeExtensionService extends AbstractExtensionService implements 
 
 	private readonly _extensionScanner: CachedExtensionScanner;
 	private readonly _localCrashTracker = new ExtensionHostCrashTracker();
+	// --- Coderm start: isolated language EH kind ---
+	private readonly _isolatedCrashTracker = new ExtensionHostCrashTracker();
+	// --- Coderm end ---
 
 	constructor(
 		@IInstantiationService instantiationService: IInstantiationService,
@@ -225,6 +233,27 @@ export class NativeExtensionService extends AbstractExtensionService implements 
 				this._notificationService.prompt(Severity.Error, nls.localize('extensionService.crash', "Extension host terminated unexpectedly 3 times within the last 5 minutes."), choices);
 			}
 		}
+		// --- Coderm start: isolated language EH kind ---
+		else if (extensionHost.kind === ExtensionHostKind.LocalIsolatedProcess) {
+			// Restart the isolated host independently of the main/local EH: a language
+			// extension crash must not take the editor down. startExtensionHosts() skips
+			// already-running hosts, so only the stopped isolated host is respawned.
+			this._logExtensionHostCrash(extensionHost);
+			this._sendExtensionHostCrashTelemetry(code, signal, activatedExtensions);
+
+			this._isolatedCrashTracker.registerCrash();
+			if (this._isolatedCrashTracker.shouldAutomaticallyRestart()) {
+				this._logService.info(`Automatically restarting the isolated extension host.`);
+				this._notificationService.status(nls.localize('extensionService.autoRestart', "The extension host terminated unexpectedly. Restarting..."), { hideAfter: 5000 });
+				this.startExtensionHosts();
+			} else {
+				this._notificationService.prompt(Severity.Error, nls.localize('extensionService.crash', "Extension host terminated unexpectedly 3 times within the last 5 minutes."), [{
+					label: nls.localize('restart', "Restart Extension Host"),
+					run: () => this.startExtensionHosts()
+				}]);
+			}
+		}
+		// --- Coderm end ---
 	}
 
 	private _sendExtensionHostCrashTelemetry(code: number, signal: string | null, activatedExtensions: ExtensionIdentifier[]): void {
@@ -559,6 +588,16 @@ class NativeExtensionHostFactory implements IExtensionHostFactory {
 				}
 				return null;
 			}
+			// --- Coderm start: isolated language EH kind ---
+			case ExtensionHostKind.LocalIsolatedProcess: {
+				const startup = (
+					isInitialStart
+						? ExtensionHostStartup.EagerManualStart
+						: ExtensionHostStartup.EagerAutoStart
+				);
+				return this._instantiationService.createInstance(NativeLocalIsolatedProcessExtensionHost, runningLocation, startup, this._createLocalIsolatedProcessExtensionHostDataProvider(runningLocations, isInitialStart, runningLocation));
+			}
+			// --- Coderm end ---
 		}
 	}
 
@@ -594,6 +633,40 @@ class NativeExtensionHostFactory implements IExtensionHostFactory {
 			}
 		};
 	}
+	// --- Coderm start: isolated language EH kind ---
+	private _createLocalIsolatedProcessExtensionHostDataProvider(runningLocations: ExtensionRunningLocationTracker, isInitialStart: boolean, desiredRunningLocation: LocalIsolatedProcessRunningLocation): ILocalIsolatedProcessExtensionHostDataProvider {
+		return {
+			getInitData: async (): Promise<ILocalIsolatedProcessExtensionHostInitData> => {
+				if (isInitialStart) {
+					// Here we load even extensions that would be disabled by workspace trust
+					const scannedExtensions = await this._extensionScanner.scannedExtensions;
+					if (isCI) {
+						this._logService.info(`NativeExtensionHostFactory._createLocalIsolatedProcessExtensionHostDataProvider.scannedExtensions: ${scannedExtensions.map(ext => ext.identifier.value).join(',')}`);
+					}
+
+					const localExtensions = checkEnabledAndProposedAPI(this._logService, this._extensionEnablementService, this._extensionsProposedApi, scannedExtensions, /* ignore workspace trust */true);
+					if (isCI) {
+						this._logService.info(`NativeExtensionHostFactory._createLocalIsolatedProcessExtensionHostDataProvider.localExtensions: ${localExtensions.map(ext => ext.identifier.value).join(',')}`);
+					}
+
+					const runningLocation = runningLocations.computeRunningLocation(localExtensions, [], false);
+					const myExtensions = filterExtensionDescriptions(localExtensions, runningLocation, extRunningLocation => desiredRunningLocation.equals(extRunningLocation));
+					const extensions = new ExtensionHostExtensions(0, localExtensions, myExtensions.map(extension => extension.identifier));
+					if (isCI) {
+						this._logService.info(`NativeExtensionHostFactory._createLocalIsolatedProcessExtensionHostDataProvider.myExtensions: ${myExtensions.map(ext => ext.identifier.value).join(',')}`);
+					}
+					return { extensions };
+				} else {
+					// restart case
+					const snapshot = await this._getExtensionRegistrySnapshotWhenReady();
+					const myExtensions = runningLocations.filterByRunningLocation(snapshot.extensions, desiredRunningLocation);
+					const extensions = new ExtensionHostExtensions(snapshot.versionId, snapshot.extensions, myExtensions.map(extension => extension.identifier));
+					return { extensions };
+				}
+			}
+		};
+	}
+	// --- Coderm end ---
 
 	private _createWebWorkerExtensionHostDataProvider(runningLocations: ExtensionRunningLocationTracker, desiredRunningLocation: LocalWebWorkerRunningLocation): IWebWorkerExtensionHostDataProvider {
 		return {
@@ -659,18 +732,37 @@ export class NativeExtensionHostKindPicker implements IExtensionHostKindPicker {
 
 	private readonly _hasRemoteExtHost: boolean;
 	private readonly _hasWebWorkerExtHost: boolean;
+	// --- Coderm start: isolated language EH kind ---
+	private readonly _hasLocalIsolatedExtHost: boolean;
+	// --- Coderm end ---
 
 	constructor(
 		@IWorkbenchEnvironmentService environmentService: IWorkbenchEnvironmentService,
-		@IConfigurationService configurationService: IConfigurationService,
+		// --- Coderm start: isolated language EH kind ---
+		@IConfigurationService private readonly _configurationService: IConfigurationService,
+		// --- Coderm end ---
 		@ILogService private readonly _logService: ILogService,
 	) {
 		this._hasRemoteExtHost = Boolean(environmentService.remoteAuthority);
-		const webWorkerExtHostEnablement = determineLocalWebWorkerExtHostEnablement(environmentService, configurationService);
+		const webWorkerExtHostEnablement = determineLocalWebWorkerExtHostEnablement(environmentService, this._configurationService);
 		this._hasWebWorkerExtHost = (webWorkerExtHostEnablement !== LocalWebWorkerExtHostEnablement.Disabled);
+		// --- Coderm start: isolated language EH kind ---
+		this._hasLocalIsolatedExtHost = this._configurationService.getValue<boolean>('coderm.languageHost.isolatedEnabled');
+		// --- Coderm end ---
 	}
 
 	public pickExtensionHostKind(extensionId: ExtensionIdentifier, extensionKinds: ExtensionKind[], isInstalledLocally: boolean, isInstalledRemotely: boolean, preference: ExtensionRunningPreference): ExtensionHostKind | null {
+		// --- Coderm start: isolated language EH kind ---
+		// Route explicitly-listed language extensions into the isolated EH when the
+		// feature is enabled. This runs before the upstream kind logic, so the main
+		// local process EH never claims these extensions.
+		if (this._hasLocalIsolatedExtHost) {
+			const isolatedExtensions = this._configurationService.getValue<string[]>('coderm.languageHost.isolatedExtensions') || [];
+			if (isolatedExtensions.includes(extensionId.value)) {
+				return ExtensionHostKind.LocalIsolatedProcess;
+			}
+		}
+		// --- Coderm end ---
 		const result = NativeExtensionHostKindPicker.pickExtensionHostKind(extensionKinds, isInstalledLocally, isInstalledRemotely, preference, this._hasRemoteExtHost, this._hasWebWorkerExtHost);
 		this._logService.trace(`pickRunningLocation for ${extensionId.value}, extension kinds: [${extensionKinds.join(', ')}], isInstalledLocally: ${isInstalledLocally}, isInstalledRemotely: ${isInstalledRemotely}, preference: ${extensionRunningPreferenceToString(preference)} => ${extensionHostKindToString(result)}`);
 		return result;

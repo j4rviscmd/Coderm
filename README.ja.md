@@ -82,6 +82,8 @@ VS Codeのフォーク。本家にはないUI/UX改善を追加した(してい�
 | `coderm.workbench.editor.disableGroupLock`        | `boolean`  | `true`                                           | エディタグループのロック機能を完全に無効化。グループは自動・手動を問わずロックできず、常にロック解除状態で動作 |
 | `coderm.languageHost.enabled`                    | `boolean`  | `false`                                          | （実験的）ネイティブ（Rust）Language Host を有効化。設定した言語で tree-sitter ベースの documentSymbol・foldingRange・hover・definition・references・documentHighlights を提供（Phase 5） |
 | `coderm.languageHost.languages`                  | `array`    | `[]`                                             | （実験的）ネイティブ Host が扱う言語 ID（例: "typescript", "tsx"）。空の場合は機能無効 |
+| `coderm.languageHost.isolatedEnabled`            | `boolean`  | `false`                                          | （実験的）`isolatedExtensions` に列挙した拡張を、メインのローカルプロセス拡張ホストから分離した専用拡張ホストプロセスで実行（Phase 6） |
+| `coderm.languageHost.isolatedExtensions`         | `array`    | `[]`                                             | （実験的）`isolatedEnabled` が有効な場合に、分離拡張ホストにルーティングする拡張 ID（Phase 6） |
 
 ---
 
