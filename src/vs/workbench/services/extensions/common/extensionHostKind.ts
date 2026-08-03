@@ -9,10 +9,7 @@ import { ExtensionIdentifier, IExtensionDescription } from '../../../../platform
 export const enum ExtensionHostKind {
 	LocalProcess = 1,
 	LocalWebWorker = 2,
-	Remote = 3,
-	// --- Coderm start: isolated language EH kind ---
-	LocalIsolatedProcess = 4
-	// --- Coderm end ---
+	Remote = 3
 }
 
 export function extensionHostKindToString(kind: ExtensionHostKind | null): string {
@@ -23,9 +20,6 @@ export function extensionHostKindToString(kind: ExtensionHostKind | null): strin
 		case ExtensionHostKind.LocalProcess: return 'LocalProcess';
 		case ExtensionHostKind.LocalWebWorker: return 'LocalWebWorker';
 		case ExtensionHostKind.Remote: return 'Remote';
-		// --- Coderm start: isolated language EH kind ---
-		case ExtensionHostKind.LocalIsolatedProcess: return 'LocalIsolatedProcess';
-		// --- Coderm end ---
 	}
 }
 

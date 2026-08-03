@@ -45,8 +45,6 @@ import { IEnvironmentMainService } from '../../platform/environment/electron-mai
 import { isLaunchedFromCli } from '../../platform/environment/node/argvHelper.js';
 import { getResolvedShellEnv } from '../../platform/shell/node/shellEnv.js';
 import { IExtensionHostStarter, ipcExtensionHostStarterChannelName } from '../../platform/extensions/common/extensionHostStarter.js';
-import { ILanguageHostServerService, ipcLanguageHostServerChannelName } from '../../platform/languageHost/common/languageHostServer.js';
-import { LanguageHostServerService } from '../../platform/languageHost/electron-main/languageHostServerService.js';
 import { ExtensionHostStarter } from '../../platform/extensions/electron-main/extensionHostStarter.js';
 import { IExternalTerminalMainService } from '../../platform/externalTerminal/electron-main/externalTerminal.js';
 import { LinuxExternalTerminalService, MacExternalTerminalService, WindowsExternalTerminalService } from '../../platform/externalTerminal/node/externalTerminalService.js';
@@ -1161,8 +1159,6 @@ export class CodeApplication extends Disposable {
 
 		// Extension Host Starter
 		services.set(IExtensionHostStarter, new SyncDescriptor(ExtensionHostStarter));
-		// Coderm: native Language Host starter (manages the Rust child process + stdio relay)
-		services.set(ILanguageHostServerService, new SyncDescriptor(LanguageHostServerService));
 
 		// Storage
 		services.set(IStorageMainService, new SyncDescriptor(StorageMainService));
@@ -1388,10 +1384,6 @@ export class CodeApplication extends Disposable {
 		// Extension Host Starter
 		const extensionHostStarterChannel = ProxyChannel.fromService(accessor.get(IExtensionHostStarter), disposables);
 		mainProcessElectronServer.registerChannel(ipcExtensionHostStarterChannelName, extensionHostStarterChannel);
-
-		// Coderm: Language Host Starter
-		const languageHostServerChannel = ProxyChannel.fromService(accessor.get(ILanguageHostServerService), disposables);
-		mainProcessElectronServer.registerChannel(ipcLanguageHostServerChannelName, languageHostServerChannel);
 
 		// Utility Process Worker
 		const utilityProcessWorkerChannel = ProxyChannel.fromService(accessor.get(IUtilityProcessWorkerMainService), disposables);

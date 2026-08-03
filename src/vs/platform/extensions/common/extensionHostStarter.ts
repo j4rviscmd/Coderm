@@ -19,13 +19,6 @@ export interface IExtensionHostProcessOptions {
 	detached: boolean;
 	execArgv: string[] | undefined;
 	silent: boolean;
-	// --- Coderm start: isolated language EH kind ---
-	// When set to 'isolatedExtensionHost' the spawned utility process is named
-	// 'isolated-extension-host' (visible in Process Explorer). Optional: the main
-	// process falls back to the regular extension-host name when undefined, so the
-	// local process extension host is unaffected.
-	kind?: 'extensionHost' | 'isolatedExtensionHost';
-	// --- Coderm end ---
 }
 
 export interface IExtensionHostStarter {
