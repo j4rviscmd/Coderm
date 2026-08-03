@@ -532,7 +532,21 @@ export class NativeLocalIsolatedProcessExtensionHost extends Disposable implemen
 				extensionDevelopmentLocationURI: this._environmentService.extensionDevelopmentLocationURI,
 				extensionTestsLocationURI: this._environmentService.extensionTestsLocationURI,
 				globalStorageHome: this._userDataProfilesService.defaultProfile.globalStorageHome,
-				workspaceStorageHome: this._environmentService.workspaceStorageHome,
+				// --- Coderm start: Phase 7-A isolated EH resource isolation ---
+				// Separate workspaceStorageHome so the isolated EH never contends with the
+				// LocalProcess EH for the same <workspaceStorageHome>/<workspace.id>/ lock
+				// and meta.json. Sharing that path was the strong candidate for Phase 6's
+				// silent activate failure (exthost.log showed 3 EHs "Skipping acquiring lock"
+				// on the same storage).
+				//
+				// IMPORTANT: must be a SIBLING of workspaceStorage/, not a child. VS Code's
+				// storage cleanup (storageDataCleaner) reclaims workspace storage directories
+				// it no longer considers in-use (matched by workspace.id). A child like
+				// workspaceStorage/isolated/ is not a recognized workspace entry and gets
+				// reclaimed, dropping the storage lock mid-session (lock-lost) and breaking
+				// activation. workspaceStorage-isolated/ sits outside that scan.
+				workspaceStorageHome: this._environmentService.workspaceStorageHome.with({ path: this._environmentService.workspaceStorageHome.path + '-isolated' }),
+				// --- Coderm end ---
 				extensionLogLevel: this._defaultLogLevelsService.defaultLogLevels.extensions,
 				isSessionsWindow: this._environmentService.isSessionsWindow
 			},
@@ -565,7 +579,12 @@ export class NativeLocalIsolatedProcessExtensionHost extends Disposable implemen
 			virtualWorkspaceExtensionTips: this._productService.virtualWorkspaceExtensionTips,
 			logLevel: this._logService.getLevel(),
 			loggers: [...this._loggerService.getRegisteredLoggers()],
-			logsLocation: this._environmentService.extHostLogsPath,
+			// --- Coderm start: Phase 7-A isolated EH resource isolation ---
+			// Separate logsLocation so the isolated EH writes logs under a dedicated
+			// subtree (<extHostLogsPath>/isolated/<extensionId>/), mirroring the
+			// workspaceStorageHome split. Avoids log path races with the LocalProcess EH.
+			logsLocation: URI.joinPath(this._environmentService.extHostLogsPath, 'isolated'),
+			// --- Coderm end ---
 			autoStart: (this.startup === ExtensionHostStartup.EagerAutoStart),
 			uiKind: UIKind.Desktop,
 			handle: this._environmentService.window.handle ? encodeBase64(this._environmentService.window.handle) : undefined

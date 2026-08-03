@@ -107,7 +107,14 @@ export class ExtensionHostStarter extends Disposable implements IDisposable, IEx
 			throw canceled();
 		}
 		const extHost = this._getExtHost(id);
-		const args = ['--skipWorkspaceStorageLock'];
+		// --- Coderm start: Phase 7-A isolated EH storage lock ---
+		// The isolated EH runs with a separated workspaceStorageHome (set by the
+		// workbench side), so it can acquire the workspace storage lock normally
+		// instead of skipping it — giving it proper storage consistency on crash
+		// recovery. The LocalProcess EH keeps the skip flag to preserve upstream
+		// behavior, where multiple LocalProcess EHs may share one storage home.
+		const args = opts.kind === 'isolatedExtensionHost' ? [] : ['--skipWorkspaceStorageLock'];
+		// --- Coderm end ---
 		if (this._configurationService.getValue<boolean>('extensions.supportNodeGlobalNavigator')) {
 			args.push('--supportGlobalNavigator');
 		}
