@@ -545,6 +545,16 @@ export abstract class AbstractExtensionService extends Disposable implements IEx
 		const localProcessExtensions = (this._hasLocalProcess ? this._runningLocations.filterByExtensionHostKind(localExtensions, ExtensionHostKind.LocalProcess) : []);
 		const localWebWorkerExtensions = this._runningLocations.filterByExtensionHostKind(localExtensions, ExtensionHostKind.LocalWebWorker);
 		remoteExtensions = this._runningLocations.filterByExtensionHostKind(remoteExtensions, ExtensionHostKind.Remote);
+		// --- Coderm start: isolated language EH kind ---
+		// VS Code's _resolveAndProcessExtensions builds the registry from per-kind buckets.
+		// Upstream covers LocalProcess / LocalWebWorker / Remote only — without the isolated
+		// bucket here, isolated-routed extensions (e.g. typescript-language-features) are
+		// dropped from the registry. That makes ExtensionHostManager.start() receive empty
+		// myExtensions for the isolated EH, which overwrites the correct init data and breaks
+		// activation (Phase 6 / Phase 7-A root cause). Add the isolated bucket so isolated
+		// extensions are registered symmetrically with the other kinds.
+		const localIsolatedProcessExtensions = this._runningLocations.filterByExtensionHostKind(localExtensions, ExtensionHostKind.LocalIsolatedProcess);
+		// --- Coderm end ---
 
 		// Add locally the remote extensions that need to run locally in the web worker
 		for (const ext of remoteExtensionsThatNeedToRunLocally) {
@@ -553,7 +563,10 @@ export abstract class AbstractExtensionService extends Disposable implements IEx
 			}
 		}
 
-		const allExtensions = remoteExtensions.concat(localProcessExtensions).concat(localWebWorkerExtensions);
+		const allExtensions = remoteExtensions.concat(localProcessExtensions).concat(localWebWorkerExtensions)
+			// --- Coderm start: isolated language EH kind ---
+			.concat(localIsolatedProcessExtensions);
+		// --- Coderm end ---
 		let toAdd = allExtensions;
 
 		if (resolverExtensions.length) {
