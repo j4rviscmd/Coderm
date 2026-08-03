@@ -13,9 +13,7 @@ import { IReadOnlyExtensionDescriptionRegistry } from './extensionDescriptionReg
 import { ExtensionHostKind, ExtensionRunningPreference, IExtensionHostKindPicker, determineExtensionHostKinds } from './extensionHostKind.js';
 import { IExtensionHostManager } from './extensionHostManagers.js';
 import { IExtensionManifestPropertiesService } from './extensionManifestPropertiesService.js';
-// --- Coderm start: isolated language EH kind ---
-import { ExtensionRunningLocation, LocalIsolatedProcessRunningLocation, LocalProcessRunningLocation, LocalWebWorkerRunningLocation, RemoteRunningLocation } from './extensionRunningLocation.js';
-// --- Coderm end ---
+import { ExtensionRunningLocation, LocalProcessRunningLocation, LocalWebWorkerRunningLocation, RemoteRunningLocation } from './extensionRunningLocation.js';
 import { isProposedApiEnabled } from './extensions.js';
 
 export class ExtensionRunningLocationTracker {
@@ -23,9 +21,6 @@ export class ExtensionRunningLocationTracker {
 	private _runningLocation = new ExtensionIdentifierMap<ExtensionRunningLocation | null>();
 	private _maxLocalProcessAffinity: number = 0;
 	private _maxLocalWebWorkerAffinity: number = 0;
-	// --- Coderm start: isolated language EH kind ---
-	private _maxLocalIsolatedProcessAffinity: number = 0;
-	// --- Coderm end ---
 
 	public get maxLocalProcessAffinity(): number {
 		return this._maxLocalProcessAffinity;
@@ -34,25 +29,6 @@ export class ExtensionRunningLocationTracker {
 	public get maxLocalWebWorkerAffinity(): number {
 		return this._maxLocalWebWorkerAffinity;
 	}
-
-	// --- Coderm start: isolated language EH kind ---
-	public get maxLocalIsolatedProcessAffinity(): number {
-		return this._maxLocalIsolatedProcessAffinity;
-	}
-
-	// Returns true when at least one extension has been routed to the isolated
-	// language extension host. AbstractExtensionService uses this to avoid
-	// spawning an isolated EH process when there is nothing to host, so the
-	// default (feature off) stays indistinguishable from upstream.
-	public hasLocalIsolatedProcessExtensions(): boolean {
-		for (const runningLocation of this._runningLocation.values()) {
-			if (runningLocation && runningLocation.kind === ExtensionHostKind.LocalIsolatedProcess) {
-				return true;
-			}
-		}
-		return false;
-	}
-	// --- Coderm end ---
 
 	constructor(
 		private readonly _registry: IReadOnlyExtensionDescriptionRegistry,
@@ -254,7 +230,7 @@ export class ExtensionRunningLocationTracker {
 		return this._doComputeRunningLocation(this._runningLocation, localExtensions, remoteExtensions, isInitialAllocation).runningLocation;
 	}
 
-	private _doComputeRunningLocation(existingRunningLocation: ExtensionIdentifierMap<ExtensionRunningLocation | null>, localExtensions: IExtensionDescription[], remoteExtensions: IExtensionDescription[], isInitialAllocation: boolean): { runningLocation: ExtensionIdentifierMap<ExtensionRunningLocation | null>; maxLocalProcessAffinity: number; maxLocalWebWorkerAffinity: number; maxLocalIsolatedProcessAffinity: number } {
+	private _doComputeRunningLocation(existingRunningLocation: ExtensionIdentifierMap<ExtensionRunningLocation | null>, localExtensions: IExtensionDescription[], remoteExtensions: IExtensionDescription[], isInitialAllocation: boolean): { runningLocation: ExtensionIdentifierMap<ExtensionRunningLocation | null>; maxLocalProcessAffinity: number; maxLocalWebWorkerAffinity: number } {
 		// Skip extensions that have an existing running location
 		localExtensions = localExtensions.filter(extension => !existingRunningLocation.has(extension.identifier));
 		remoteExtensions = remoteExtensions.filter(extension => !existingRunningLocation.has(extension.identifier));
@@ -277,9 +253,6 @@ export class ExtensionRunningLocationTracker {
 		const result = new ExtensionIdentifierMap<ExtensionRunningLocation | null>();
 		const localProcessExtensions: IExtensionDescription[] = [];
 		const localWebWorkerExtensions: IExtensionDescription[] = [];
-		// --- Coderm start: isolated language EH kind ---
-		const localIsolatedProcessExtensions: IExtensionDescription[] = [];
-		// --- Coderm end ---
 		for (const [extensionIdKey, extensionHostKind] of extensionHostKinds) {
 			let runningLocation: ExtensionRunningLocation | null = null;
 			if (extensionHostKind === ExtensionHostKind.LocalProcess) {
@@ -294,13 +267,6 @@ export class ExtensionRunningLocationTracker {
 				}
 			} else if (extensionHostKind === ExtensionHostKind.Remote) {
 				runningLocation = new RemoteRunningLocation();
-			} else if (extensionHostKind === ExtensionHostKind.LocalIsolatedProcess) {
-				// --- Coderm start: isolated language EH kind ---
-				const extensionDescription = extensions.get(extensionIdKey);
-				if (extensionDescription) {
-					localIsolatedProcessExtensions.push(extensionDescription);
-				}
-				// --- Coderm end ---
 			}
 			result.set(extensionIdKey, runningLocation);
 		}
@@ -315,13 +281,6 @@ export class ExtensionRunningLocationTracker {
 			const affinity = localWebWorkerAffinities.get(extension.identifier) || 0;
 			result.set(extension.identifier, new LocalWebWorkerRunningLocation(affinity));
 		}
-		// --- Coderm start: isolated language EH kind ---
-		const { affinities: localIsolatedProcessAffinities, maxAffinity: maxLocalIsolatedProcessAffinity } = this._computeAffinity(localIsolatedProcessExtensions, ExtensionHostKind.LocalIsolatedProcess, isInitialAllocation);
-		for (const extension of localIsolatedProcessExtensions) {
-			const affinity = localIsolatedProcessAffinities.get(extension.identifier) || 0;
-			result.set(extension.identifier, new LocalIsolatedProcessRunningLocation(affinity));
-		}
-		// --- Coderm end ---
 
 		// Add extensions that already have an existing running location
 		for (const [extensionIdKey, runningLocation] of existingRunningLocation) {
@@ -330,17 +289,14 @@ export class ExtensionRunningLocationTracker {
 			}
 		}
 
-		return { runningLocation: result, maxLocalProcessAffinity: maxAffinity, maxLocalWebWorkerAffinity: maxLocalWebWorkerAffinity, maxLocalIsolatedProcessAffinity: maxLocalIsolatedProcessAffinity };
+		return { runningLocation: result, maxLocalProcessAffinity: maxAffinity, maxLocalWebWorkerAffinity: maxLocalWebWorkerAffinity };
 	}
 
 	public initializeRunningLocation(localExtensions: IExtensionDescription[], remoteExtensions: IExtensionDescription[]): void {
-		const { runningLocation, maxLocalProcessAffinity, maxLocalWebWorkerAffinity, maxLocalIsolatedProcessAffinity } = this._doComputeRunningLocation(this._runningLocation, localExtensions, remoteExtensions, true);
+		const { runningLocation, maxLocalProcessAffinity, maxLocalWebWorkerAffinity } = this._doComputeRunningLocation(this._runningLocation, localExtensions, remoteExtensions, true);
 		this._runningLocation = runningLocation;
 		this._maxLocalProcessAffinity = maxLocalProcessAffinity;
 		this._maxLocalWebWorkerAffinity = maxLocalWebWorkerAffinity;
-		// --- Coderm start: isolated language EH kind ---
-		this._maxLocalIsolatedProcessAffinity = maxLocalIsolatedProcessAffinity;
-		// --- Coderm end ---
 	}
 
 	/**
@@ -368,9 +324,6 @@ export class ExtensionRunningLocationTracker {
 		// Determine new running location
 		const localProcessExtensions: IExtensionDescription[] = [];
 		const localWebWorkerExtensions: IExtensionDescription[] = [];
-		// --- Coderm start: isolated language EH kind ---
-		const localIsolatedProcessExtensions: IExtensionDescription[] = [];
-		// --- Coderm end ---
 		for (const extension of toAdd) {
 			const extensionKind = this.readExtensionKinds(extension);
 			const isRemote = extension.extensionLocation.scheme === Schemas.vscodeRemote;
@@ -382,10 +335,6 @@ export class ExtensionRunningLocationTracker {
 				localWebWorkerExtensions.push(extension);
 			} else if (extensionHostKind === ExtensionHostKind.Remote) {
 				runningLocation = new RemoteRunningLocation();
-			} else if (extensionHostKind === ExtensionHostKind.LocalIsolatedProcess) {
-				// --- Coderm start: isolated language EH kind ---
-				localIsolatedProcessExtensions.push(extension);
-				// --- Coderm end ---
 			}
 			this._runningLocation.set(extension.identifier, runningLocation);
 		}
@@ -401,14 +350,6 @@ export class ExtensionRunningLocationTracker {
 			const affinity = webWorkerExtensionsAffinities.get(extension.identifier) || 0;
 			this._runningLocation.set(extension.identifier, new LocalWebWorkerRunningLocation(affinity));
 		}
-
-		// --- Coderm start: isolated language EH kind ---
-		const { affinities: isolatedProcessExtensionsAffinities } = this._computeAffinity(localIsolatedProcessExtensions, ExtensionHostKind.LocalIsolatedProcess, false);
-		for (const extension of localIsolatedProcessExtensions) {
-			const affinity = isolatedProcessExtensionsAffinities.get(extension.identifier) || 0;
-			this._runningLocation.set(extension.identifier, new LocalIsolatedProcessRunningLocation(affinity));
-		}
-		// --- Coderm end ---
 	}
 }
 
