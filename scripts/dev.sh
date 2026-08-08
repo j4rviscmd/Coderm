@@ -191,7 +191,7 @@ ensure_builtin_extensions() {
 		echo "[dev] Downloading built-in extension: $name@$version..."
 
 		local temp_vsix="/tmp/$repo_basename-$version.vsix"
-		if ! curl -sL "$vsix_url" -o "$temp_vsix"; then
+		if ! curl -fsL "$vsix_url" -o "$temp_vsix"; then
 			echo "[dev] WARNING: Failed to download $name" >&2
 			continue
 		fi
